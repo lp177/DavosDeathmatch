@@ -502,7 +502,15 @@ export function tryAttack(f, opp, char, ctx, buttons, fromMove = null) {
     if (!need.stance && need.airOk !== true && airborne) continue;
     if (need.airOnly && !airborne) continue;
     if (mv.meterCost && f.meter < mv.meterCost) continue;
-    if (need.motion && need.motion !== 'none' && !hasMotion(f.motion, need.motion)) continue;
+
+    // The dedicated Super button IS the input — pressing it should fire the
+    // super on its own, without also drawing the motion. Supers are still
+    // available the traditional way (double quarter-circle + punch) for
+    // players who want to buffer them out of a combo.
+    const superShortcut = mv.tier === 'super' && (buttons & IN.SUPER) !== 0;
+    if (!superShortcut &&
+        need.motion && need.motion !== 'none' &&
+        !hasMotion(f.motion, need.motion)) continue;
 
     // Command throws only come out when you're holding forward AND in
     // range — otherwise the button falls through to the normal, which is
