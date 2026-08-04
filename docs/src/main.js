@@ -1,0 +1,686 @@
+/* ══════════════════════════════════════════════════════════════
+   Davos Deathmatch — application entry point.
+
+   Owns the screen router, the fixed-timestep loop, and the lifetime of
+   a match (offline against the CPU, local versus, or online over
+   rollback netplay).
+
+   The loop is deliberately simple: accumulate real time, run whole
+   60Hz simulation ticks, then render once with whatever is left over.
+   Presentation effects get a fractional dt so they stay smooth on
+   high-refresh displays; the simulation never does.
+   ══════════════════════════════════════════════════════════════ */
+
+import { TICK_MS, VIEW_W, VIEW_H, MAX_METER, IN } from './sim/constants.js';
+import { Match } from './sim/match.js';
+import { Ai } from './sim/ai.js';
+import { ROSTER, ROSTER_ORDER } from './data/roster.js';
+import { STAGE_ORDER, STAGES } from './gfx/stage.js';
+
+import { settings } from './core/settings.js';
+import { input } from './core/input.js';
+import { audio } from './core/audio.js';
+import { seedFromString } from './core/rng.js';
+
+import { Camera } from './fx/camera.js';
+import { Particles } from './fx/particles.js';
+import { Juice } from './fx/juice.js';
+import { Renderer } from './gfx/renderer.js';
+
+import { SignalClient, defaultSignalUrl, signallingHint } from './net/signal.js';
+import { Peer } from './net/peer.js';
+import { Netplay } from './net/netplay.js';
+
+import { installRipples } from './ui/ripple.js';
+import { buildSettings, buildHowTo } from './ui/settings-panel.js';
+import { SelectScreen } from './ui/select.js';
+
+class App {
+  constructor() {
+    this.canvas = document.getElementById('game');
+    this.renderer = new Renderer(this.canvas);
+    this.camera = new Camera();
+    this.particles = new Particles();
+    this.juice = new Juice(this.camera, this.particles);
+    this.select = new SelectScreen();
+
+    this.screen = 'home';
+    this.mode = null;
+    this.match = null;
+    this.ai = null;
+    this.netplay = null;
+    this.peer = null;
+    this.signal = null;
+    this.paused = false;
+    this.acc = 0;
+    this.lastNow = performance.now();
+    this.fpsSamples = [];
+    this.pendingOnline = null;
+
+    this.dlgSettings = document.getElementById('dlg-settings');
+    this.dlgHowTo = document.getElementById('dlg-howto');
+
+    this._wireUi();
+    this._installDialogFallback();
+    requestAnimationFrame((t) => this._frame(t));
+  }
+
+  /* ══════════════════════════════════════════════════════
+     Screen routing
+     ══════════════════════════════════════════════════════ */
+
+  show(name) {
+    const prev = this.screen;
+    this.screen = name;
+    for (const s of document.querySelectorAll('.screen')) {
+      s.hidden = s.dataset.screen !== name;
+    }
+    if (name !== 'select') this.select.close();
+    else this.select.root.hidden = false;
+
+    if (name === 'home' || name === 'select' || name === 'online') {
+      audio.music?.setIntensity(0.45);
+      if (!audio.music?.playing) audio.music?.start({ bpm: 128, root: 55 });
+    }
+    // Focus the first control so keyboard users land somewhere sensible.
+    if (name !== 'select') {
+      const first = document.querySelector(`[data-screen="${name}"] .btn`);
+      if (first && prev !== name) setTimeout(() => first.focus({ preventScroll: true }), 30);
+    }
+  }
+
+  _wireUi() {
+    installRipples(document);
+    buildSettings();
+    buildHowTo();
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const act = btn.dataset.action;
+      if (act !== 'copy-code') audio.play('uiClick');
+      this._action(act, btn);
+    });
+
+    // Hover chirp on menu buttons.
+    document.addEventListener('pointerenter', (e) => {
+      if (e.target.closest?.('.btn')) audio.play('uiHover');
+    }, true);
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') this._onEscape(e);
+      if (e.code === 'F1') { e.preventDefault(); this.dlgHowTo.showModal(); }
+    });
+
+    // Rebuild the how-to text when bindings change.
+    settings.onChange(() => buildHowTo());
+  }
+
+  _action(act, btn) {
+    switch (act) {
+      case 'arcade':    this._toSelect('arcade'); break;
+      case 'local-vs':  this._toSelect('local'); break;
+      case 'training':  this._toSelect('training'); break;
+      case 'online-vs': this._toOnline(); break;
+
+      case 'settings':  this.dlgSettings.showModal(); break;
+      case 'howto':     this.dlgHowTo.showModal(); break;
+
+      case 'back':
+      case 'to-home':   this._quitToHome(); break;
+      case 'to-select': this._toSelect(this.mode === 'online' ? 'arcade' : (this.mode || 'arcade')); break;
+
+      case 'rematch':   this._rematch(); break;
+      case 'resume':    this._setPaused(false); break;
+      case 'quit':      this._quitToHome(); break;
+
+      case 'net-host':  this._hostGame(); break;
+      case 'net-join':  this._joinGame(); break;
+      case 'copy-code': this._copyCode(btn); break;
+      default: break;
+    }
+  }
+
+  _onEscape(e) {
+    if (this.dlgSettings.open || this.dlgHowTo.open) return;   // dialog handles it
+    if (this.screen === 'match') {
+      e.preventDefault();
+      if (this.mode === 'online') return;    // pausing a netplay match isn't a thing
+      this._setPaused(!this.paused);
+    } else if (this.screen === 'select' || this.screen === 'online') {
+      e.preventDefault();
+      this._quitToHome();
+    }
+  }
+
+  /** `<dialog closedby>` isn't in Safari yet; add click-outside dismissal. */
+  _installDialogFallback() {
+    if ('closedBy' in HTMLDialogElement.prototype) return;
+    for (const dlg of document.querySelectorAll('dialog[closedby="any"]')) {
+      dlg.addEventListener('click', (e) => {
+        if (e.target !== dlg) return;
+        const r = dlg.getBoundingClientRect();
+        const inside = e.clientX >= r.left && e.clientX <= r.right &&
+                       e.clientY >= r.top && e.clientY <= r.bottom;
+        if (!inside) dlg.close();
+      });
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════
+     Match lifecycle
+     ══════════════════════════════════════════════════════ */
+
+  _toSelect(mode) {
+    this._teardownNet();
+    this.show('select');
+    this.select.open({
+      mode,
+      onConfirm: ({ chars }) => this._startMatch({ mode, chars }),
+    });
+  }
+
+  _startMatch({ mode, chars, stage, seed, cfgOverride, localPlayer }) {
+    this.mode = mode;
+    this.select.close();
+
+    const stageId = stage || STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
+    const s = settings.data.match;
+    const cfg = cfgOverride || {
+      chars,
+      stage: stageId,
+      seed: seed ?? (Date.now() & 0x7fffffff),
+      rounds: mode === 'training' ? 1 : s.rounds,
+      roundTime: mode === 'training' ? 0 : s.roundTime,
+      // Online forces a neutral hit-stop scale: it feeds the simulation, so
+      // both peers must agree on it or they desync.
+      hitstopScale: mode === 'online' ? 1 : settings.data.video.hitstop,
+      training: mode === 'training',
+    };
+    this.cfg = cfg;
+    this.match = new Match(cfg);
+
+    this.renderer.reset(cfg.stage);
+    this.camera.reset();
+    this.particles.clear();
+    this.juice.reset();
+    this.paused = false;
+    this.acc = 0;
+
+    this.ai = null;
+    if (mode === 'arcade' || mode === 'training') {
+      this.ai = new Ai(1, ROSTER[cfg.chars[1]], s.difficulty, cfg.seed ^ 0x5f3a);
+    }
+
+    if (mode === 'online') {
+      this.localPlayer = localPlayer;
+      this.netplay = new Netplay(this.peer, localPlayer, this.match, s.inputDelay);
+      // requestAnimationFrame stops in a hidden tab. Offline that's fine —
+      // the game just pauses — but online it strands the opponent, who keeps
+      // predicting inputs that never arrive. Keep the simulation ticking from
+      // a timer whenever the page isn't visible.
+      clearInterval(this._bgTimer);
+      this._bgTimer = setInterval(() => this._backgroundTick(), 16);
+      this.netplay.addEventListener('desync', () => {
+        this._netStatus('error', 'Desync detected — the match cannot continue.');
+        this._endOnline('Desync detected. The two simulations diverged.');
+      });
+      this.netplay.addEventListener('disconnected', (e) => {
+        this._endOnline(e.detail === 'stalled'
+          ? 'Lost sync with your opponent — their game stopped responding.'
+          : 'Your opponent disconnected.');
+      });
+      for (const early of (this._earlyNetMessages || [])) this.netplay._handle(early);
+      this._earlyNetMessages = null;
+    }
+
+    const st = STAGES[cfg.stage];
+    const char = ROSTER[cfg.chars[0]];
+    audio.music?.start({ bpm: char.music.bpm, root: char.music.root, pattern: char.music.pattern });
+    audio.music?.setIntensity(0.7);
+
+    this.show('match');
+    this.canvas.focus?.();
+  }
+
+  _rematch() {
+    if (this.mode === 'online') {
+      // A clean rematch needs a fresh handshake; send both back to the lobby.
+      this._quitToHome();
+      return;
+    }
+    this._startMatch({ mode: this.mode, chars: this.cfg.chars, stage: this.cfg.stage });
+  }
+
+  _quitToHome() {
+    this._teardownNet();
+    this.match = null;
+    this.ai = null;
+    this.paused = false;
+    audio.stopSpeech();
+    audio.music?.setIntensity(0.45);
+    this.show('home');
+  }
+
+  _setPaused(on) {
+    this.paused = on;
+    document.getElementById('screen-pause').hidden = !on;
+    if (on) audio.music?.setIntensity(0.25);
+    else audio.music?.setIntensity(0.8);
+  }
+
+  _showResults() {
+    const r = this.match.result;
+    const winner = ROSTER[this.cfg.chars[r.winner]];
+    const loser = ROSTER[this.cfg.chars[1 - r.winner]];
+    const wf = this.match.fighters[r.winner];
+
+    document.getElementById('results-title').textContent =
+      wf.health >= wf.maxHealth ? 'FLAWLESS' : 'K.O.';
+    document.getElementById('results-winner').innerHTML =
+      `<b>${winner.name}</b> ${winner.flag} defeats ${loser.name} ${loser.flag}`;
+
+    const stats = document.getElementById('results-stats');
+    stats.replaceChildren();
+    const add = (label, value) => {
+      const d = document.createElement('div');
+      d.innerHTML = `<dt>${label}</dt><dd>${value}</dd>`;
+      stats.appendChild(d);
+    };
+    add('Rounds', `${r.wins[0]} – ${r.wins[1]}`);
+    add('Damage dealt', Math.round(wf.totalDamage));
+    add('Best combo', wf.maxCombo || 1);
+    add('Hits landed', wf.hitsLanded);
+    add('Health left', `${Math.round((wf.health / wf.maxHealth) * 100)}%`);
+
+    // Online has no meaningful "change delegate" without renegotiating.
+    document.querySelector('[data-action="to-select"]').hidden = this.mode === 'online';
+    document.querySelector('[data-action="rematch"]').textContent =
+      this.mode === 'online' ? 'Back to Lobby' : 'Rematch';
+
+    this.show('results');
+    audio.music?.setIntensity(0.4);
+    this.particles.confetti(0, 0, 60);
+  }
+
+  /* ══════════════════════════════════════════════════════
+     Online
+     ══════════════════════════════════════════════════════ */
+
+  _toOnline() {
+    this._teardownNet();
+    this.show('online');
+    document.getElementById('roomcode').hidden = true;
+    const hint = signallingHint();
+    if (hint) this._netStatus('error', hint);
+    else this._netStatus('idle', 'Not connected');
+    this._netStat('ns-signal', defaultSignalUrl() || '—');
+  }
+
+  _netStatus(state, text) {
+    const box = document.getElementById('netstatus');
+    box.querySelector('.netstatus__dot').dataset.state = state;
+    box.querySelector('.netstatus__text').textContent = text;
+  }
+
+  _netStat(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  async _connectSignal() {
+    this.signal = new SignalClient();
+    this._netStatus('working', 'Reaching the matchmaking server…');
+    await this.signal.connect();
+    this._netStat('ns-signal', 'connected');
+  }
+
+  async _hostGame() {
+    try {
+      await this._connectSignal();
+      this.signal.host();
+      const { code } = await this.signal.once((m) => m.t === 'hosted');
+
+      document.getElementById('roomcode').hidden = false;
+      document.getElementById('roomcode-value').textContent = code;
+      this._netStatus('working', 'Room open — waiting for an opponent…');
+
+      await this.signal.once((m) => m.t === 'peer-joined', 10 * 60 * 1000);
+      this._netStatus('working', 'Opponent found. Connecting directly…');
+
+      this.peer = new Peer(this.signal, true);
+      this._watchPeer();
+      await this.peer.start();
+      await this.peer.waitOpen();
+
+      this._netStatus('ok', 'Connected. Choose your delegate.');
+      this._netStat('ns-peer', 'connected (host)');
+      this._onlineSelect(0, seedFromString(code));
+    } catch (err) {
+      this._netStatus('error', err.message || 'Could not host a match.');
+      audio.play('uiError');
+    }
+  }
+
+  async _joinGame() {
+    const field = document.getElementById('join-code');
+    const code = field.value.trim().toUpperCase();
+    if (code.length !== 6) {
+      this._netStatus('error', 'Room codes are six characters long.');
+      audio.play('uiError');
+      field.focus();
+      return;
+    }
+    try {
+      await this._connectSignal();
+      this.signal.join(code);
+      await this.signal.once((m) => m.t === 'joined');
+      this._netStatus('working', 'Room found. Connecting directly…');
+
+      this.peer = new Peer(this.signal, false);
+      this._watchPeer();
+      await this.peer.waitOpen();
+
+      this._netStatus('ok', 'Connected. Choose your delegate.');
+      this._netStat('ns-peer', 'connected (guest)');
+      this._onlineSelect(1, seedFromString(code));
+    } catch (err) {
+      this._netStatus('error', err.message || 'Could not join that room.');
+      audio.play('uiError');
+    }
+  }
+
+  _watchPeer() {
+    this.peer.addEventListener('closed', () => {
+      if (this.screen === 'match') this._endOnline('Connection lost.');
+      else this._netStatus('error', 'Connection lost.');
+    });
+    this.peer.addEventListener('data', (ev) => this._onPeerMessage(ev.detail));
+    this.peer.addEventListener('pcstate', (ev) => this._netStat('ns-peer', ev.detail));
+  }
+
+  _onlineSelect(localPlayer, seed) {
+    this.pendingOnline = { localPlayer, seed, picks: [null, null] };
+    this.show('select');
+    this.select.open({
+      mode: 'online',
+      localPlayer,
+      onLocalPick: (charId) => {
+        this.pendingOnline.picks[localPlayer] = charId;
+        this.peer.send({ t: 'pick', char: charId });
+        this._tryStartOnline();
+      },
+      onConfirm: () => { /* start is driven by the host's `go` message */ },
+    });
+  }
+
+  _onPeerMessage(msg) {
+    // Input and checksum packets can arrive before the Netplay session has
+    // been constructed. Dropping them strands the peer forever: it keeps
+    // waiting on inputs for frames it will never be sent again, and both
+    // sides deadlock. Hold them and replay them once the session exists.
+    if (msg.t === 'i' || msg.t === 'c') {
+      if (!this.netplay) {
+        (this._earlyNetMessages ??= []).push(msg);
+      }
+      return;
+    }
+    if (msg.t === 'pick') {
+      const p = this.pendingOnline;
+      if (!p) return;
+      p.picks[1 - p.localPlayer] = msg.char;
+      this.select.setRemotePick(msg.char);
+      this._tryStartOnline();
+    } else if (msg.t === 'go') {
+      // Guest: adopt the host's configuration verbatim.
+      const p = this.pendingOnline;
+      if (!p || p.localPlayer === 0) return;
+      this._startMatch({
+        mode: 'online',
+        localPlayer: 1,
+        cfgOverride: msg.cfg,
+        chars: msg.cfg.chars,
+      });
+    }
+  }
+
+  _tryStartOnline() {
+    const p = this.pendingOnline;
+    if (!p || !p.picks[0] || !p.picks[1]) return;
+    if (p.localPlayer !== 0) return;      // only the host decides
+
+    const cfg = {
+      chars: [p.picks[0], p.picks[1]],
+      stage: STAGE_ORDER[p.seed % STAGE_ORDER.length],
+      seed: p.seed,
+      rounds: settings.data.match.rounds,
+      roundTime: settings.data.match.roundTime,
+      hitstopScale: 1,
+      training: false,
+    };
+    this.peer.send({ t: 'go', cfg });
+    // Start immediately. The host must have its session listening before the
+    // guest — which receives `go` at least one trip later — can send anything.
+    this._startMatch({ mode: 'online', localPlayer: 0, cfgOverride: cfg, chars: cfg.chars });
+  }
+
+  _endOnline(reason) {
+    this._teardownNet();
+    this.match = null;
+    this.show('online');
+    this._netStatus('error', reason);
+    audio.play('uiError');
+  }
+
+  _teardownNet() {
+    clearInterval(this._bgTimer);
+    this._bgTimer = null;
+    try { this.netplay?.bye(); } catch { /* already gone */ }
+    this.netplay?.dispose();
+    this.netplay = null;
+    this.peer?.close();
+    this.peer = null;
+    this.signal?.close();
+    this.signal = null;
+    this.pendingOnline = null;
+  }
+
+  async _copyCode(btn) {
+    const code = document.getElementById('roomcode-value').textContent;
+    try {
+      await navigator.clipboard.writeText(code);
+      const old = btn.textContent;
+      btn.textContent = 'Copied';
+      audio.play('uiConfirm');
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    } catch {
+      audio.play('uiError');
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════
+     Loop
+     ══════════════════════════════════════════════════════ */
+
+  _frame(now) {
+    requestAnimationFrame((t) => this._frame(t));
+
+    let elapsed = now - this.lastNow;
+    this.lastNow = now;
+    if (elapsed > 220) elapsed = 220;       // tab was backgrounded; don't fast-forward
+    if (elapsed < 0) elapsed = 0;
+
+    this.fpsSamples.push(elapsed);
+    if (this.fpsSamples.length > 60) this.fpsSamples.shift();
+
+    // Slow motion is a local flourish; online must run at real speed or
+    // the two peers drift apart.
+    const timeScale = this.mode === 'online' ? 1 : this.camera.slowmo;
+    const dtFrames = Math.min(4, (elapsed / TICK_MS) * timeScale);
+
+    if (this.screen === 'match' && this.match && !this.paused) {
+      this.acc += elapsed * timeScale;
+      let steps = 0;
+      while (this.acc >= TICK_MS && steps < 5) {
+        this._tick();
+        this.acc -= TICK_MS;
+        steps++;
+      }
+      if (steps === 5) this.acc = 0;        // we're behind; drop the backlog
+    } else if (this.screen === 'select') {
+      this.select.update(dtFrames);
+    }
+
+    this._render(dtFrames);
+  }
+
+  /**
+   * Advance the simulation while the tab is hidden, so an online opponent
+   * never has to wait on our window manager. Shares the accumulator and
+   * clock with the animation loop, so exactly one of the two drives time.
+   */
+  _backgroundTick() {
+    if (!document.hidden) return;
+    if (this.mode !== 'online' || this.screen !== 'match' || !this.match) return;
+
+    const now = performance.now();
+    let elapsed = now - this.lastNow;
+    this.lastNow = now;
+    if (elapsed > 220) elapsed = 220;
+    if (elapsed < 0) elapsed = 0;
+
+    this.acc += elapsed;
+    let steps = 0;
+    while (this.acc >= TICK_MS && steps < 5) {
+      this._tick();
+      this.acc -= TICK_MS;
+      steps++;
+    }
+    if (steps === 5) this.acc = 0;
+  }
+
+  _tick() {
+    const m = this.match;
+    if (!m) return;
+
+    if (this.mode === 'online') {
+      if (!this.netplay) return;
+      const word = input.poll(0);
+      this.netplay.tick(word);
+    } else {
+      const i0 = input.poll(0);
+      const i1 = this.mode === 'local' ? input.poll(1) : (this.ai ? this.ai.update(m) : 0);
+      m.step([i0, i1], true);
+    }
+
+    this.juice.handle(m.events, m);
+
+    if (this.cfg?.training) {
+      for (const f of m.fighters) {
+        if (f.health < f.maxHealth * 0.02) f.health = f.maxHealth;
+        f.meter = MAX_METER;
+      }
+    }
+
+    // Music rises as somebody gets close to losing.
+    const low = Math.min(m.fighters[0].health / m.fighters[0].maxHealth,
+                         m.fighters[1].health / m.fighters[1].maxHealth);
+    audio.music?.setIntensity(low < 0.3 ? 1.2 : low < 0.6 ? 0.95 : 0.75);
+
+    if (m.over && m.phase === 'matchend' && m.phaseFrame > 150) {
+      this._showResults();
+    }
+  }
+
+  _render(dt) {
+    const m = this.match;
+    this.juice.update(dt);
+    this.particles.update(dt);
+
+    if (m) {
+      const [a, b] = m.fighters;
+      const spread = Math.abs(a.x - b.x);
+      this.camera.update(dt, {
+        x: (a.x + b.x) / 2,
+        y: Math.max(0, (a.y + b.y) / 2 - 40) * 0.35,
+        spread,
+      });
+      this.renderer.draw(m, this.camera, this.particles, this.juice, dt, {
+        debug: settings.data.video.showFps,
+        training: this.cfg?.training,
+        lines: this._debugLines(),
+      });
+    } else {
+      // Idle attract backdrop behind the menus.
+      this.camera.update(dt, null);
+      const ctx = this.renderer.ctx;
+      this.renderer.stage.setStage('congress');
+      const w = this.renderer.wctx;
+      w.setTransform(1, 0, 0, 1, 0, 0);
+      w.fillStyle = '#05070b';
+      w.fillRect(0, 0, VIEW_W, VIEW_H);
+      this.renderer.stage.draw(w, this.camera, dt);
+      w.save();
+      this.camera.apply(w);
+      this.particles.draw(w, -1);
+      this.particles.draw(w, 1);
+      w.restore();
+      ctx.setTransform(this.renderer.dpr, 0, 0, this.renderer.dpr, 0, 0);
+      ctx.drawImage(this.renderer.world, 0, 0);
+    }
+  }
+
+  _debugLines() {
+    if (!settings.data.video.showFps) return null;
+    const avg = this.fpsSamples.reduce((a, b) => a + b, 0) / (this.fpsSamples.length || 1);
+    const lines = [
+      `fps        ${(1000 / avg).toFixed(0)}  (${avg.toFixed(1)} ms)`,
+      `particles  ${this.particles.count}`,
+      `frame      ${this.match ? this.match.frame : 0}`,
+    ];
+    if (this.netplay) {
+      const s = this.netplay.stats;
+      lines.push(
+        `ping       ${s.ping != null ? s.ping.toFixed(0) + ' ms' : '—'}`,
+        `rollback/s ${s.rollbacksPerSec}`,
+        `advantage  ${s.advantage}`,
+        `delay      ${s.delay}f`,
+      );
+      if (s.desynced) lines.push('!DESYNC');
+    }
+    return lines;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   Boot — WebAudio needs a user gesture, so the game waits behind a
+   single button. That gesture also unlocks speech synthesis.
+   ══════════════════════════════════════════════════════════════ */
+
+const bootEl = document.getElementById('boot');
+const bootBtn = document.getElementById('boot-btn');
+
+async function boot() {
+  bootBtn.disabled = true;
+  await audio.start();
+  input.attach();
+
+  bootEl.classList.add('boot--fading');
+  setTimeout(() => { bootEl.hidden = true; }, 420);
+
+  const app = new App();
+  window.__davos = app;          // handy in the console; harmless in production
+  app.show('home');
+  audio.music?.start({ bpm: 128, root: 55 });
+  audio.music?.setIntensity(0.45);
+}
+
+bootBtn.addEventListener('click', boot, { once: true });
+bootBtn.focus();
+
+// Warm up the speech voice list; some browsers populate it asynchronously.
+if (window.speechSynthesis) {
+  window.speechSynthesis.addEventListener?.('voiceschanged', () => {
+    audio._voiceCache = window.speechSynthesis.getVoices();
+  });
+}

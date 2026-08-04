@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Davos Deathmatch</title>
+<meta name="description" content="A satirical fighting game set at the World Economic Forum.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🥊</text></svg>">
+<link rel="stylesheet" href="styles/tokens.css">
+<link rel="stylesheet" href="styles/controls.css">
+<link rel="stylesheet" href="styles/screens.css">
+</head>
+<body>
+
+<!-- ═══ Game canvas ═══ -->
+<div id="stage-wrap">
+  <canvas id="game" width="1280" height="720" aria-label="Fighting game viewport" role="img"></canvas>
+</div>
+
+<!-- ═══ UI layer ═══ -->
+<div id="ui" class="ui-layer">
+
+  <!-- ─── Title / Home ─── -->
+  <section class="screen screen--menu" id="screen-home" data-screen="home" hidden>
+    <div class="logo">
+      <div class="logo__kicker">World Economic Forum presents</div>
+      <h1 class="logo__title"><span>DAVOS</span><em>DEATHMATCH</em></h1>
+      <div class="logo__sub">Annual Meeting &middot; Congress Centre &middot; No Rules</div>
+    </div>
+
+    <nav class="menu" aria-label="Main menu">
+      <button class="btn btn--primary" data-action="arcade">
+        <span class="btn__icon" aria-hidden="true">🏆</span>
+        <span class="btn__body"><b>Arcade</b><small>Fight the summit, one delegate at a time</small></span>
+      </button>
+      <button class="btn" data-action="local-vs">
+        <span class="btn__icon" aria-hidden="true">🤼</span>
+        <span class="btn__body"><b>Local Versus</b><small>Two delegates, one keyboard</small></span>
+      </button>
+      <button class="btn btn--accent" data-action="online-vs">
+        <span class="btn__icon" aria-hidden="true">🌐</span>
+        <span class="btn__body"><b>Multiplayer Versus</b><small>Online netplay with rollback</small></span>
+      </button>
+      <button class="btn" data-action="training">
+        <span class="btn__icon" aria-hidden="true">🎯</span>
+        <span class="btn__body"><b>Training</b><small>Infinite health, frame data, hitboxes</small></span>
+      </button>
+      <div class="menu__row">
+        <button class="btn btn--ghost" data-action="settings">
+          <span class="btn__icon" aria-hidden="true">⚙️</span><span class="btn__body"><b>Settings</b></span>
+        </button>
+        <button class="btn btn--ghost" data-action="howto">
+          <span class="btn__icon" aria-hidden="true">📖</span><span class="btn__body"><b>How to Play</b></span>
+        </button>
+      </div>
+    </nav>
+
+    <p class="disclaimer">
+      Satire. Public figures are caricatured for comedic and political commentary.
+      No actual heads of state were harmed.
+    </p>
+  </section>
+
+  <!-- ─── Character select ─── -->
+  <section class="screen screen--select" id="screen-select" data-screen="select" hidden>
+    <header class="select__head">
+      <button class="btn btn--icon" data-action="back" aria-label="Back to menu">←</button>
+      <h2 class="select__title">Choose Your Delegate</h2>
+      <div class="select__timer" id="select-timer" aria-hidden="true"></div>
+    </header>
+
+    <div class="select__body">
+      <div class="pick pick--p1">
+        <div class="pick__label" id="p1-label">Player 1</div>
+        <div class="pick__portrait"><canvas id="p1-portrait" width="320" height="380"></canvas></div>
+        <div class="pick__name" id="p1-name">—</div>
+        <div class="pick__title" id="p1-title"></div>
+      </div>
+
+      <div class="roster" id="roster" role="listbox" aria-label="Fighter roster" tabindex="0"></div>
+
+      <div class="pick pick--p2">
+        <div class="pick__label" id="p2-label">Player 2</div>
+        <div class="pick__portrait"><canvas id="p2-portrait" width="320" height="380"></canvas></div>
+        <div class="pick__name" id="p2-name">—</div>
+        <div class="pick__title" id="p2-title"></div>
+      </div>
+    </div>
+
+    <div class="select__detail" id="select-detail"></div>
+    <div class="select__hint" id="select-hint">P1: move with your movement keys, confirm with Light Punch.</div>
+  </section>
+
+  <!-- ─── Online lobby ─── -->
+  <section class="screen screen--menu" id="screen-online" data-screen="online" hidden>
+    <header class="lobby__head">
+      <button class="btn btn--icon" data-action="back" aria-label="Back to menu">←</button>
+      <h2>Multiplayer Versus</h2>
+    </header>
+
+    <div class="lobby">
+      <div class="card">
+        <h3>Host a match</h3>
+        <p class="card__hint">Create a room and send the code to your opponent.</p>
+        <button class="btn btn--primary" data-action="net-host">Create Room</button>
+        <div class="roomcode" id="roomcode" hidden>
+          <span class="roomcode__value" id="roomcode-value">------</span>
+          <button class="btn btn--ghost btn--sm" data-action="copy-code">Copy</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Join a match</h3>
+        <p class="card__hint">Enter the six-character code your host gave you.</p>
+        <div class="field">
+          <input class="field__input" id="join-code" maxlength="6" autocomplete="off"
+                 spellcheck="false" placeholder=" " aria-labelledby="join-code-label">
+          <label class="field__label" id="join-code-label" for="join-code">Room code</label>
+          <div class="field__bar"></div>
+        </div>
+        <button class="btn btn--accent" data-action="net-join">Join Room</button>
+      </div>
+    </div>
+
+    <div class="netstatus" id="netstatus" role="status" aria-live="polite">
+      <span class="netstatus__dot" data-state="idle"></span>
+      <span class="netstatus__text">Not connected</span>
+    </div>
+
+    <details class="netadvanced">
+      <summary>Connection details</summary>
+      <dl class="netstats" id="netstats">
+        <div><dt>Signalling</dt><dd id="ns-signal">—</dd></div>
+        <div><dt>Peer</dt><dd id="ns-peer">—</dd></div>
+        <div><dt>Ping</dt><dd id="ns-ping">—</dd></div>
+        <div><dt>Rollbacks/s</dt><dd id="ns-rb">—</dd></div>
+        <div><dt>Input delay</dt><dd id="ns-delay">—</dd></div>
+      </dl>
+      <p class="card__hint">
+        Peer-to-peer over WebRTC. The signalling server only introduces the two
+        browsers — game traffic never passes through it.
+      </p>
+    </details>
+  </section>
+
+  <!-- ─── Results ─── -->
+  <section class="screen screen--menu" id="screen-results" data-screen="results" hidden>
+    <h2 class="results__title" id="results-title">K.O.</h2>
+    <div class="results__winner" id="results-winner"></div>
+    <dl class="results__stats" id="results-stats"></dl>
+    <div class="menu__row">
+      <button class="btn btn--primary" data-action="rematch">Rematch</button>
+      <button class="btn" data-action="to-select">Change Delegate</button>
+      <button class="btn btn--ghost" data-action="to-home">Main Menu</button>
+    </div>
+  </section>
+
+  <!-- ─── Pause ─── -->
+  <section class="screen screen--pause" id="screen-pause" data-screen="pause" hidden>
+    <div class="pause">
+      <h2>Summit Suspended</h2>
+      <button class="btn btn--primary" data-action="resume">Resume</button>
+      <button class="btn" data-action="settings">Settings</button>
+      <button class="btn btn--ghost" data-action="quit">Quit to Menu</button>
+    </div>
+  </section>
+</div>
+
+<!-- ═══ Settings dialog ═══ -->
+<dialog id="dlg-settings" closedby="any" aria-labelledby="dlg-settings-title" class="dlg">
+  <form method="dialog" class="dlg__form">
+    <header class="dlg__head">
+      <h2 id="dlg-settings-title">Settings</h2>
+      <button class="btn btn--icon" value="close" aria-label="Close settings">✕</button>
+    </header>
+
+    <div class="tabs" role="tablist" aria-label="Settings sections">
+      <button type="button" class="tab" role="tab" aria-selected="true"  data-tab="audio">Audio</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="controls">Controls</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="video">Presentation</button>
+      <button type="button" class="tab" role="tab" aria-selected="false" data-tab="match">Match</button>
+    </div>
+
+    <div class="dlg__body">
+      <div class="tabpanel" role="tabpanel" data-panel="audio"></div>
+      <div class="tabpanel" role="tabpanel" data-panel="controls" hidden></div>
+      <div class="tabpanel" role="tabpanel" data-panel="video" hidden></div>
+      <div class="tabpanel" role="tabpanel" data-panel="match" hidden></div>
+    </div>
+
+    <footer class="dlg__foot">
+      <button type="button" class="btn btn--ghost" data-action="reset-settings">Restore Defaults</button>
+      <button class="btn btn--primary" value="close">Done</button>
+    </footer>
+  </form>
+</dialog>
+
+<!-- ═══ How to play dialog ═══ -->
+<dialog id="dlg-howto" closedby="any" aria-labelledby="dlg-howto-title" class="dlg">
+  <form method="dialog" class="dlg__form">
+    <header class="dlg__head">
+      <h2 id="dlg-howto-title">How to Play</h2>
+      <button class="btn btn--icon" value="close" aria-label="Close">✕</button>
+    </header>
+    <div class="dlg__body" id="howto-body"></div>
+    <footer class="dlg__foot"><button class="btn btn--primary" value="close">Got it</button></footer>
+  </form>
+</dialog>
+
+<!-- ═══ Key-capture dialog ═══ -->
+<dialog id="dlg-bind" aria-labelledby="dlg-bind-title" class="dlg dlg--slim">
+  <div class="dlg__form">
+    <div class="bind">
+      <h2 id="dlg-bind-title">Press a key</h2>
+      <p class="bind__what" id="bind-what">—</p>
+      <p class="bind__hint">Esc to cancel &middot; Backspace to clear</p>
+    </div>
+  </div>
+</dialog>
+
+<!-- ═══ Boot gate (needed for WebAudio autoplay policy) ═══ -->
+<div id="boot" class="boot">
+  <div class="boot__inner">
+    <h1 class="logo__title logo__title--boot"><span>DAVOS</span><em>DEATHMATCH</em></h1>
+    <button class="btn btn--primary btn--lg" id="boot-btn">Enter the Congress Centre</button>
+    <p class="boot__hint">Best with sound on. Headphones recommended for maximum geopolitical impact.</p>
+  </div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
