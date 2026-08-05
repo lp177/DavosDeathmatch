@@ -89,6 +89,7 @@ export class SignalClient extends EventTarget {
     this.code = null;
     this.role = null;      // 'host' | 'guest'
     this.state = 'idle';
+    this._beat = null;
   }
 
   _set(state, detail) {
@@ -124,6 +125,15 @@ export class SignalClient extends EventTarget {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        // Write something periodically even when there is nothing to say. A
+        // lobby is idle by nature — the host opens a room and goes off to
+        // paste the link into a chat — and an idle TCP entry is exactly what
+        // NAT tables and proxies reclaim, telling neither end. This keeps the
+        // path warm, and when it has already gone it makes the failure
+        // surface here instead of leaving the guest waiting on a socket that
+        // will never speak again. Servers that don't know 'ping' ignore it,
+        // so this works against any build.
+        this._beat = setInterval(() => this.send({ t: 'ping' }), 20000);
         this._set('connected');
         resolve();
       });
@@ -136,6 +146,7 @@ export class SignalClient extends EventTarget {
       });
 
       ws.addEventListener('close', () => {
+        this._stopBeat();
         this._set('closed');
         this.dispatchEvent(new CustomEvent('closed'));
       });
@@ -161,7 +172,13 @@ export class SignalClient extends EventTarget {
   join(code) { this.send({ t: 'join', code: String(code).toUpperCase().trim() }); }
   relay(payload) { this.send({ t: 'signal', payload }); }
 
+  _stopBeat() {
+    clearInterval(this._beat);
+    this._beat = null;
+  }
+
   close() {
+    this._stopBeat();
     try { this.ws?.close(); } catch { /* ignore */ }
     this.ws = null;
   }

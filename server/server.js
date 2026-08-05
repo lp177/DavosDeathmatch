@@ -422,6 +422,12 @@ function handleClient(conn) {
         break;
       }
 
+      // Application-level keepalive from the client. Nothing to do but prove
+      // the socket is alive in both directions.
+      case 'ping':
+        conn.sendJson({ t: 'pong' });
+        break;
+
       case 'signal': {
         const other = partnerOf(conn);
         if (other) other.sendJson({ t: 'signal', payload: msg.payload });

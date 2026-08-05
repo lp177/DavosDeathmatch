@@ -453,17 +453,28 @@ class App {
       if (this._netEpoch !== epoch) { signal.close(); return; }
       signal.host(reclaim);
       const { code } = await signal.once((m) => m.t === 'hosted');
+      // A server that cannot honour a reclaim answers with a fresh code, and
+      // the link already sitting in someone's chat is then dead. Say so
+      // rather than swapping the code out from under the player in silence.
+      const lostCode = reclaim && code !== reclaim;
 
       document.getElementById('roomcode').hidden = false;
       document.getElementById('roomcode-value').textContent = code;
       document.getElementById('copy-room-link').hidden = false;
       document.getElementById('room-open-hint').hidden = false;
       document.getElementById('close-room').hidden = false;
-      this._netStatus('working', 'Room open — waiting for an opponent…');
+      this._netStatus(lostCode ? 'error' : 'working', lostCode
+        ? 'Reconnected, but the old link no longer works — send this new one.'
+        : 'Room open — waiting for an opponent…');
 
       try {
-        // No deadline: the room stays open for as long as this page is.
-        await signal.once((m) => m.t === 'peer-joined', Infinity);
+        // No deadline: the room stays open for as long as this page is. The
+        // one thing that must end the wait is being told the room has died —
+        // otherwise the host sits on "waiting for an opponent" forever while
+        // the server has already forgotten the room.
+        const m = await signal.once(
+          (x) => x.t === 'peer-joined' || x.t === 'peer-left', Infinity);
+        if (m.t === 'peer-left') throw new Error('The room was closed.');
       } catch (err) {
         // The wait is long by design, and the link is already in someone's
         // chat window. If the socket died rather than the player giving up,
