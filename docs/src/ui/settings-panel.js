@@ -12,6 +12,7 @@ import { input, keyLabel } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { ACTIONS } from '../sim/constants.js';
 import { defaultSignalUrl, isStaticHost } from '../net/signal.js';
+import { keyboardLayout } from '../core/keyboard.js';
 
 /* ── Control factories ────────────────────────────────── */
 
@@ -244,6 +245,22 @@ export function buildSettings() {
       + 'Player 2. Face buttons map to LP/HP/LK/HK, right bumper is Super, left bumper '
       + 'is Taunt. Rumble fires on hits if your pad supports it.'));
     c.appendChild(cg2);
+    const lg = group('Keyboard layout');
+    lg.append(
+      selectRow('Layout', 'controls.layout', [
+        { value: 'auto', label: `Detect automatically — ${keyboardLayout.label}` },
+        { value: 'qwerty', label: 'QWERTY' },
+        { value: 'azerty', label: 'AZERTY (ZQSD)' },
+        { value: 'qwertz', label: 'QWERTZ' },
+      ]),
+      el('p', 'card__hint',
+        'This only changes what the keys are CALLED here. Bindings are stored as '
+        + 'physical key positions, so the movement diamond is already ZQSD on an '
+        + 'AZERTY keyboard and WASD on QWERTY — the same three keys under the same '
+        + 'three fingers, whatever your keycaps say.'),
+    );
+    c.appendChild(lg);
+
     const cg3 = group('Reset');
     const rb = el('button', 'btn btn--ghost btn--sm', 'Restore default bindings');
     rb.type = 'button';

@@ -451,3 +451,57 @@
   .logo__title { font-size: clamp(32px, 7vw, 62px); }
   .disclaimer { display: none; }
 }
+
+/* ─────────────────────────────────────────────
+   Direct connect (serverless)
+   ───────────────────────────────────────────── */
+.direct {
+  width: min(720px, 100%);
+  padding: 14px 18px;
+  border-radius: var(--r-md);
+  background: var(--surf-1);
+  border: 1px solid var(--line-2);
+}
+.direct > summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent);
+  list-style: none;
+}
+.direct > summary::-webkit-details-marker { display: none; }
+.direct > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform var(--t-fast) var(--ease-standard);
+}
+.direct[open] > summary::before { content: "▾ "; }
+.direct > summary:hover { color: #ffd97a; }
+.direct > .card__hint { margin: 10px 0 14px; }
+
+.direct__pick { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.direct__pick .btn { flex: 1; justify-content: center; min-width: 150px; }
+
+.direct__step { display: grid; gap: 8px; margin-top: 14px; }
+.direct__step[hidden] { display: none; }
+.direct__label { font-size: 13px; color: var(--text-2); margin-top: 6px; }
+.direct__label b { color: var(--accent); margin-right: 4px; }
+
+.codebox {
+  width: 100%;
+  padding: 10px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--surf-0);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-sm);
+  resize: vertical;
+  word-break: break-all;
+  transition: border-color var(--t-fast);
+}
+.codebox:hover { border-color: var(--line-2); }
+.codebox:focus { outline: none; border-color: var(--primary); }
+.codebox[readonly] { color: var(--accent); background: #05070b; }
+.codebox::placeholder { color: var(--text-3); font-style: italic; }

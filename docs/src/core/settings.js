@@ -53,6 +53,11 @@ export const DEFAULTS = {
       super: 'Numpad6', taunt: 'Numpad3',
     },
   },
+  controls: {
+    // Which letters this keyboard prints. Only affects what the UI *says*:
+    // bindings are physical key positions and work on any layout regardless.
+    layout: 'auto',      // 'auto' | 'qwerty' | 'azerty' | 'qwertz'
+  },
   net: {
     signalUrl: '',       // blank => auto-detect (same origin)
   },

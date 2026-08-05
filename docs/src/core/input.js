@@ -9,6 +9,7 @@
 
 import { IN, ACTIONS } from '../sim/constants.js';
 import { settings } from './settings.js';
+import { keyboardLayout } from './keyboard.js';
 
 /** Keys we swallow so the page never scrolls or scrubs during a match. */
 const SWALLOW = new Set([
@@ -212,6 +213,10 @@ const KEY_LABELS = {
 export function keyLabel(code) {
   if (!code) return '—';
   if (KEY_LABELS[code]) return KEY_LABELS[code];
+  // Bindings are physical positions, so the printed letter depends on the
+  // player's layout: the same key is "W" on QWERTY and "Z" on AZERTY.
+  const printed = keyboardLayout.printed(code);
+  if (printed) return printed;
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   if (code.startsWith('Numpad')) return `Num ${code.slice(6)}`;

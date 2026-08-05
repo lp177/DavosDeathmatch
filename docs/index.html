@@ -128,6 +128,53 @@
       <span class="netstatus__text">Not connected</span>
     </div>
 
+    <!-- ─── Serverless fallback: works anywhere, including static hosts ─── -->
+    <details class="direct" id="direct">
+      <summary>No matchmaking server? Connect directly &mdash; nothing to install</summary>
+      <p class="card__hint">
+        Send your opponent a code through any chat you already use. The two
+        browsers then talk to each other directly, with nothing in between.
+      </p>
+
+      <div class="direct__pick">
+        <button class="btn btn--primary" data-action="direct-host">I'll invite</button>
+        <button class="btn" data-action="direct-join">I was invited</button>
+      </div>
+
+      <!-- Host: produce an invite, then paste the reply -->
+      <div class="direct__step" id="direct-host-step" hidden>
+        <label class="direct__label" for="direct-offer">
+          <b>1.</b> Send this invite to your opponent
+        </label>
+        <textarea class="codebox" id="direct-offer" readonly rows="4"
+                  placeholder="Generating…"></textarea>
+        <button class="btn btn--ghost btn--sm" data-action="copy-offer">Copy invite</button>
+
+        <label class="direct__label" for="direct-answer-in">
+          <b>2.</b> Paste the reply they send back
+        </label>
+        <textarea class="codebox" id="direct-answer-in" rows="4"
+                  placeholder="Paste their reply code here…"></textarea>
+        <button class="btn btn--accent" data-action="direct-accept">Connect</button>
+      </div>
+
+      <!-- Guest: consume an invite, then hand back a reply -->
+      <div class="direct__step" id="direct-join-step" hidden>
+        <label class="direct__label" for="direct-offer-in">
+          <b>1.</b> Paste the invite you were sent
+        </label>
+        <textarea class="codebox" id="direct-offer-in" rows="4"
+                  placeholder="Paste their invite code here…"></textarea>
+        <button class="btn btn--primary" data-action="direct-reply">Generate reply</button>
+
+        <label class="direct__label" for="direct-answer" id="direct-answer-label" hidden>
+          <b>2.</b> Send this reply back, then wait
+        </label>
+        <textarea class="codebox" id="direct-answer" readonly rows="4" hidden></textarea>
+        <button class="btn btn--ghost btn--sm" data-action="copy-answer" hidden>Copy reply</button>
+      </div>
+    </details>
+
     <details class="netadvanced">
       <summary>Connection details</summary>
       <dl class="netstats" id="netstats">

@@ -44,6 +44,12 @@ drive your fighter at once — WASD or the arrows, F/G/V/B or the numpad. Use
 whichever your hands reach for; nothing needs rebinding. Local Versus keeps
 them separate, one set per player.
 
+**On AZERTY?** The table below is QWERTY naming. Bindings are stored as
+physical key positions, so the movement diamond is **ZQSD** on AZERTY and WASD
+on QWERTY — the same keys under the same fingers. The game detects your layout
+and labels everything accordingly; override it in Settings → Controls if the
+detection is wrong or your browser doesn't support it.
+
 Everything is rebindable in Settings → Controls. Gamepads are detected
 automatically (pad 1 → P1, pad 2 → P2, either one in solo) with rumble on hits.
 
@@ -88,11 +94,23 @@ replay.
 The signalling server only introduces the two browsers to each other. Once
 they're connected, **no game traffic passes through it**.
 
-> **GitHub Pages caveat.** Pages is static-only, so it cannot run the
-> matchmaking server. To play online from the hosted build, run
-> `node server/server.js` somewhere both players can reach and paste its
-> `ws://` or `wss://` address into **Settings → Match → Signalling server**.
-> When you're serving the game from the bundled server, it's auto-detected.
+### Two ways to connect
+
+**Room code** — needs the bundled server running somewhere both players can
+reach. Auto-detected when you're serving the game from it; otherwise put its
+`ws://` / `wss://` address in **Settings → Match → Signalling server**.
+
+**Direct connect** — needs nothing at all. The host generates an invite code,
+sends it over any chat, and pastes back the reply. That's all a matchmaking
+server ever does, and you already have a dozen ways to send someone a message.
+
+Direct connect is what makes online work from **GitHub Pages**, which is
+static-only and can't host a WebSocket endpoint. It's under *"No matchmaking
+server?"* in the multiplayer lobby.
+
+> Both paths need a route between the two machines. On a restrictive
+> symmetric NAT, peer-to-peer can fail regardless — that would need a TURN
+> relay, which this project deliberately doesn't ship.
 
 ## Design notes
 

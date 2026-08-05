@@ -21,6 +21,7 @@ import { settings } from './core/settings.js';
 import { input } from './core/input.js';
 import { audio } from './core/audio.js';
 import { seedFromString } from './core/rng.js';
+import { keyboardLayout } from './core/keyboard.js';
 
 import { Camera } from './fx/camera.js';
 import { Particles } from './fx/particles.js';
@@ -28,6 +29,7 @@ import { Juice } from './fx/juice.js';
 import { Renderer } from './gfx/renderer.js';
 
 import { SignalClient, defaultSignalUrl, signallingHint } from './net/signal.js';
+import { ManualSignal, waitForIce, encodeSignal, decodeSignal } from './net/manual.js';
 import { Peer } from './net/peer.js';
 import { Netplay } from './net/netplay.js';
 
@@ -112,8 +114,9 @@ class App {
       if (e.code === 'F1') { e.preventDefault(); this.dlgHowTo.showModal(); }
     });
 
-    // Rebuild the how-to text when bindings change.
+    // Rebuild the how-to text when bindings — or the keyboard layout — change.
     settings.onChange(() => buildHowTo());
+    keyboardLayout.onChange(() => buildHowTo());
   }
 
   _action(act, btn) {
@@ -137,6 +140,13 @@ class App {
       case 'net-host':  this._hostGame(); break;
       case 'net-join':  this._joinGame(); break;
       case 'copy-code': this._copyCode(btn); break;
+
+      case 'direct-host':   this._directHost(); break;
+      case 'direct-join':   this._directJoin(); break;
+      case 'direct-reply':  this._directReply(); break;
+      case 'direct-accept': this._directAccept(); break;
+      case 'copy-offer':    this._copyBox('direct-offer', btn); break;
+      case 'copy-answer':   this._copyBox('direct-answer', btn); break;
       default: break;
     }
   }
@@ -360,8 +370,7 @@ class App {
       this._netStat('ns-peer', 'connected (host)');
       this._onlineSelect(0, seedFromString(code));
     } catch (err) {
-      this._netStatus('error', err.message || 'Could not host a match.');
-      audio.play('uiError');
+      this._netFailed(err, 'host');
     }
   }
 
@@ -388,7 +397,158 @@ class App {
       this._netStat('ns-peer', 'connected (guest)');
       this._onlineSelect(1, seedFromString(code));
     } catch (err) {
-      this._netStatus('error', err.message || 'Could not join that room.');
+      this._netFailed(err, 'join');
+    }
+  }
+
+  /**
+   * Explain a matchmaking failure in terms of what the player can do.
+   * "Could not reach the server" is true and useless; the reason it can't
+   * be reached is almost always that there isn't one, which has a fix.
+   */
+  _netFailed(err, what) {
+    audio.play('uiError');
+    const url = defaultSignalUrl();
+    const noServer = /reach|timed out|Invalid signalling|No signalling/i.test(err.message || '');
+    if (noServer) {
+      this._netStatus('error',
+        `No matchmaking server at ${url || 'this address'}. `
+        + 'Open "Connect directly" below — it needs no server at all.');
+      const d = document.getElementById('direct');
+      if (d) d.open = true;
+    } else {
+      this._netStatus('error', err.message || `Could not ${what} a match.`);
+    }
+  }
+
+  /* ── Serverless direct connect ───────────────────────── */
+
+  _directShow(which) {
+    document.getElementById('direct-host-step').hidden = which !== 'host';
+    document.getElementById('direct-join-step').hidden = which !== 'join';
+  }
+
+  /** Build a Peer with no signalling server behind it. */
+  _directPeer(initiator) {
+    this._teardownNet();
+    this.manual = new ManualSignal();
+    this.peer = new Peer(this.manual, initiator);
+    this._watchPeer();
+    return this.peer;
+  }
+
+  async _directHost() {
+    this._directShow('host');
+    const box = document.getElementById('direct-offer');
+    box.value = '';
+    box.placeholder = 'Gathering connection details…';
+    this._netStatus('working', 'Building your invite…');
+    try {
+      const peer = this._directPeer(true);
+      await peer.start();
+      await waitForIce(peer.pc);
+      box.value = await encodeSignal('offer', peer.pc.localDescription);
+      this._netStatus('working', 'Send that invite, then paste their reply below.');
+      // Connection completes the moment their answer is applied.
+      peer.waitOpen(10 * 60 * 1000)
+        .then(() => this._directConnected(0))
+        .catch(() => { /* surfaced by the peer close handler */ });
+    } catch (err) {
+      box.placeholder = 'Could not build an invite.';
+      this._netStatus('error', err.message || 'Could not build an invite.');
+      audio.play('uiError');
+    }
+  }
+
+  _directJoin() {
+    this._directShow('join');
+    this._netStatus('idle', 'Paste the invite you were sent.');
+  }
+
+  async _directReply() {
+    const input = document.getElementById('direct-offer-in').value;
+    if (!input.trim()) {
+      this._netStatus('error', 'Paste the invite code first.');
+      audio.play('uiError');
+      return;
+    }
+    try {
+      const { sdp } = await decodeSignal(input);
+      this._netStatus('working', 'Building your reply…');
+      const peer = this._directPeer(false);
+      this.manual.deliver({ kind: 'offer', sdp });
+      // Peer answers asynchronously; wait for the description to exist.
+      await this._waitFor(() => peer.pc.localDescription, 8000,
+        'Could not answer that invite.');
+      await waitForIce(peer.pc);
+
+      const code = await encodeSignal('answer', peer.pc.localDescription);
+      for (const id of ['direct-answer-label', 'direct-answer']) {
+        document.getElementById(id).hidden = false;
+      }
+      document.querySelector('[data-action="copy-answer"]').hidden = false;
+      document.getElementById('direct-answer').value = code;
+      this._netStatus('working', 'Send that reply back and wait for them to connect.');
+
+      peer.waitOpen(10 * 60 * 1000)
+        .then(() => this._directConnected(1))
+        .catch(() => { /* surfaced by the peer close handler */ });
+    } catch (err) {
+      this._netStatus('error', err.message || 'That invite could not be read.');
+      audio.play('uiError');
+    }
+  }
+
+  async _directAccept() {
+    const input = document.getElementById('direct-answer-in').value;
+    if (!input.trim()) {
+      this._netStatus('error', 'Paste their reply code first.');
+      audio.play('uiError');
+      return;
+    }
+    try {
+      const { sdp } = await decodeSignal(input);
+      this._netStatus('working', 'Connecting…');
+      this.manual.deliver({ kind: 'answer', sdp });
+    } catch (err) {
+      this._netStatus('error', err.message || 'That reply could not be read.');
+      audio.play('uiError');
+    }
+  }
+
+  _directConnected(localPlayer) {
+    this._netStatus('ok', 'Connected. Choose your delegate.');
+    this._netStat('ns-peer', `direct (${localPlayer === 0 ? 'host' : 'guest'})`);
+    this._netStat('ns-signal', 'none — direct connection');
+    audio.play('uiConfirm');
+    // Host picks the seed; the guest adopts whatever arrives with `go`.
+    this._onlineSelect(localPlayer, (Date.now() & 0x7fffffff) >>> 0);
+  }
+
+  /** Poll a condition without busy-waiting the main thread. */
+  _waitFor(fn, ms, message) {
+    return new Promise((resolve, reject) => {
+      const started = performance.now();
+      const tick = () => {
+        if (fn()) return resolve();
+        if (performance.now() - started > ms) return reject(new Error(message));
+        setTimeout(tick, 60);
+      };
+      tick();
+    });
+  }
+
+  async _copyBox(id, btn) {
+    const el = document.getElementById(id);
+    if (!el.value) return;
+    try {
+      await navigator.clipboard.writeText(el.value);
+      const old = btn.textContent;
+      btn.textContent = 'Copied';
+      audio.play('uiConfirm');
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    } catch {
+      el.select();
       audio.play('uiError');
     }
   }
@@ -486,6 +646,7 @@ class App {
     this.peer = null;
     this.signal?.close();
     this.signal = null;
+    this.manual = null;
     this.pendingOnline = null;
   }
 
@@ -668,6 +829,9 @@ async function boot() {
   bootBtn.disabled = true;
   await audio.start();
   input.attach();
+  // Work out what this keyboard actually prints before drawing any key
+  // labels, so an AZERTY player is told to press Z rather than W.
+  await keyboardLayout.detect();
 
   bootEl.classList.add('boot--fading');
   setTimeout(() => { bootEl.hidden = true; }, 420);
