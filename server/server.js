@@ -21,6 +21,43 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
+/* ══════════════════════════════════════════════════════════════
+   TURN credentials.
+
+   STUN only tells a peer its own public address. When both players sit
+   behind symmetric or carrier-grade NAT there is no direct path at all,
+   and the connection needs a relay. coturn's shared-secret scheme lets
+   us mint short-lived credentials without storing users: the username
+   is an expiry timestamp and the password is its HMAC.
+
+   Configured entirely by environment, and absent by default — the
+   server is useful without a relay, it just can't rescue the hardest
+   networks. The secret is never read from, or written to, the repo.
+   ══════════════════════════════════════════════════════════════ */
+const TURN_SECRET = process.env.TURN_SECRET || '';
+const TURN_URLS = (process.env.TURN_URLS || '').split(',').map((u) => u.trim()).filter(Boolean);
+const TURN_TTL = Number(process.env.TURN_TTL || 7200);
+
+const STUN_URLS = (process.env.STUN_URLS ||
+  'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302')
+  .split(',').map((u) => u.trim()).filter(Boolean);
+
+function iceServers() {
+  const servers = [{ urls: STUN_URLS }];
+  if (TURN_SECRET && TURN_URLS.length) {
+    // coturn REST scheme: username is the expiry, credential its HMAC-SHA1.
+    // coturn accepts "<expiry>:<name>". Giving each player a distinct name
+    // makes user-quota bound ONE player's allocations instead of everyone
+    // sharing a single identity and starving each other.
+    const who = crypto.randomBytes(6).toString('hex');
+    const username = `${Math.floor(Date.now() / 1000) + TURN_TTL}:${who}`;
+    const credential = crypto.createHmac('sha1', TURN_SECRET)
+      .update(username).digest('base64');
+    servers.push({ urls: TURN_URLS, username, credential });
+  }
+  return { ttl: TURN_TTL, iceServers: servers };
+}
+
 /* ── Arguments ─────────────────────────────────────────── */
 const argv = process.argv.slice(2);
 const argOf = (name, fallback) => {
@@ -46,6 +83,23 @@ const MIME = {
   '.txt': 'text/plain; charset=utf-8',
   '.map': 'application/json',
 };
+
+/**
+ * Hand out ICE servers. Open to any origin on purpose: this is a public
+ * game, the credentials expire, and coturn's own quotas bound the damage.
+ * Locking it to one origin would only break self-hosted copies, which is
+ * exactly the case that most needs a relay.
+ */
+function serveIce(req, res) {
+  const body = JSON.stringify(iceServers());
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
 
 function serveStatic(req, res) {
   let urlPath;
@@ -81,8 +135,24 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
+  const pathname = (() => {
+    try { return new URL(req.url, 'http://localhost').pathname; } catch { return ''; }
+  })();
+
+  if (req.method === 'OPTIONS' && pathname === '/ice') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      'Access-Control-Max-Age': '86400',
+    }).end();
+    return;
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405).end('Method not allowed');
+    return;
+  }
+  if (pathname === '/ice') {
+    serveIce(req, res);
     return;
   }
   serveStatic(req, res);
@@ -371,6 +441,9 @@ server.listen(PORT, HOST, () => {
   const shown = HOST === '0.0.0.0' ? 'localhost' : HOST;
   log(`serving ${path.relative(process.cwd(), ROOT) || '.'} on http://${shown}:${PORT}`);
   log(`signalling on ws://${shown}:${PORT}/signal`);
+  log(TURN_SECRET && TURN_URLS.length
+    ? `TURN relay offered at /ice (${TURN_URLS.length} url(s), ttl ${TURN_TTL}s)`
+    : 'no TURN configured — set TURN_SECRET and TURN_URLS to add a relay');
   log('press Ctrl+C to stop');
 });
 

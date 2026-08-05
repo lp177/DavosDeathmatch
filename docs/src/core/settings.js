@@ -66,6 +66,9 @@ export const DEFAULTS = {
     // bundled server, otherwise the public instance below. Set this to your
     // own `node server/server.js` address to use that instead.
     signalUrl: '',
+    // Where to get TURN credentials. Without a relay, players behind
+    // symmetric or carrier-grade NAT cannot connect to each other at all.
+    iceUrl: '',
   },
   last: {
     p1: 'trump',

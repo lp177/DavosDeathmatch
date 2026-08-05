@@ -269,8 +269,11 @@ export class Netplay extends EventTarget {
       // A brief stall is normal on a slow link. A stall that never ends means
       // the peer's inputs are gone for good, and freezing on a black screen
       // forever is the worst possible way to tell the player that.
+      // Must exceed the peer's ICE-recovery budget (restart at 4s, give up at
+      // 16s). Ending the match at 6s would kill exactly the connections the
+      // restart is there to save.
       if (!this.stalledSince) this.stalledSince = now;
-      else if (now - this.stalledSince > 6000) {
+      else if (now - this.stalledSince > 20000) {
         this.connected = false;
         this.dispatchEvent(new CustomEvent('disconnected', { detail: 'stalled' }));
       }

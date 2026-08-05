@@ -16,13 +16,19 @@
    works.
    ══════════════════════════════════════════════════════════════ */
 
+// Public trackers, tried in parallel. Ones that die stay in the list only
+// as long as they are useful — tracker.files.fm was dropped when its TLS
+// certificate expired, which turns every attempt into console noise.
 const TRACKERS = [
   'wss://tracker.openwebtorrent.com',
   'wss://tracker.btorrent.xyz',
-  'wss://tracker.files.fm:7073/announce',
 ];
 
-const ANNOUNCE_EVERY = 12000;   // keep the offer alive for late arrivals
+// How often the host re-advertises. A tracker hands each offer to exactly
+// one peer, so an offer that nobody claimed is simply gone — the host has to
+// keep putting a fresh one up, and a joiner should not have to wait long for
+// the next one.
+const ANNOUNCE_EVERY = 4000;
 
 /** Twenty characters, identical on both peers, derived from the room code. */
 export function infoHashFor(code) {
@@ -59,6 +65,7 @@ export class TrackerClient extends EventTarget {
     this.timer = null;
     this.closed = false;
     this.pending = null;      // the offer we are advertising
+    this._started = new WeakSet();
   }
 
   /** Connect to whichever trackers answer. Resolves once at least one does. */
@@ -113,10 +120,17 @@ export class TrackerClient extends EventTarget {
       action: 'announce',
       info_hash: this.infoHash,
       peer_id: this.peerId,
-      numwant: this.pending ? 1 : 0,
+      // Asking for peers even when we have no offer keeps us in the swarm,
+      // which is what makes a host's offer reach us.
+      numwant: this.pending ? 1 : 1,
       uploaded: 0, downloaded: 0, left: 0,
-      event: 'started',
     };
+    // 'started' announces a NEW join. Repeating it on every keep-alive makes
+    // a tracker treat one peer as a stream of arrivals.
+    if (!this._started.has(ws)) {
+      msg.event = 'started';
+      this._started.add(ws);
+    }
     if (this.pending) {
       msg.offers = [{ offer_id: this.pending.offerId, offer: this.pending.offer }];
     }

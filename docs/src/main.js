@@ -31,6 +31,7 @@ import { Renderer } from './gfx/renderer.js';
 import { SignalClient, defaultSignalUrl, signallingHint, probeSignal } from './net/signal.js';
 import { ManualSignal, waitForIce, encodeSignal, decodeSignal } from './net/manual.js';
 import { TrackerClient } from './net/tracker.js';
+import { getIceServers, hasTurn } from './net/ice.js';
 import { Peer } from './net/peer.js';
 import { Netplay } from './net/netplay.js';
 
@@ -361,11 +362,14 @@ class App {
     // it — is how you lose someone before they've played.
     this._netStep('probe');
     this._netStatus('working', 'Looking for a matchmaking server…');
+    this._ensureIce();          // warm the cache; connecting shouldn't wait on it
 
     // Probe briefly, but never sit waiting on something that cannot answer:
     // a same-origin guess on a static host is known-dead before we try it.
     const url = defaultSignalUrl();
-    this.hasSignalling = await probeSignal(url, 2200);
+    // Long enough for an intercontinental WebSocket handshake — too short
+    // and distant players get silently demoted to the direct-only lobby.
+    this.hasSignalling = await probeSignal(url, 4500);
 
     this._netStat('ns-signal', this.hasSignalling ? url : 'none — direct only');
     if (this.hasSignalling) {
@@ -398,6 +402,7 @@ class App {
 
   async _hostGame() {
     try {
+      await this._ensureIce();
       await this._connectSignal();
       this.signal.host();
       const { code } = await this.signal.once((m) => m.t === 'hosted');
@@ -410,13 +415,14 @@ class App {
       await this.signal.once((m) => m.t === 'peer-joined', 10 * 60 * 1000);
       this._netStatus('working', 'Opponent found. Connecting directly…');
 
-      this.peer = new Peer(this.signal, true);
+      this.peer = new Peer(this.signal, true, this.iceServers);
       this._watchPeer();
       await this.peer.start();
       await this.peer.waitOpen();
 
       this._netStatus('ok', 'Connected. Choose your delegate.');
       this._netStat('ns-peer', 'connected (host)');
+      this._reportRoute();
       this._onlineSelect(0, seedFromString(code));
     } catch (err) {
       this._netFailed(err, 'host');
@@ -433,17 +439,19 @@ class App {
       return;
     }
     try {
+      await this._ensureIce();
       await this._connectSignal();
       this.signal.join(code);
       await this.signal.once((m) => m.t === 'joined');
       this._netStatus('working', 'Room found. Connecting directly…');
 
-      this.peer = new Peer(this.signal, false);
+      this.peer = new Peer(this.signal, false, this.iceServers);
       this._watchPeer();
       await this.peer.waitOpen();
 
       this._netStatus('ok', 'Connected. Choose your delegate.');
       this._netStat('ns-peer', 'connected (guest)');
+      this._reportRoute();
       this._onlineSelect(1, seedFromString(code));
     } catch (err) {
       this._netFailed(err, 'join');
@@ -513,6 +521,21 @@ class App {
   /* ── Serverless direct connect ───────────────────────── */
 
   /**
+   * Make sure we have ICE servers — including a TURN relay — before
+   * building any peer connection. Cached, so this is free after the first
+   * call, and it never throws: STUN-only still connects for most players.
+   */
+  async _ensureIce() {
+    const servers = await getIceServers();
+    // Only ever upgrade: a STUN-only result must not replace one with a relay.
+    if (!this.iceServers || hasTurn(servers) || !hasTurn(this.iceServers)) {
+      this.iceServers = servers;
+    }
+    this._netStat('ns-relay', hasTurn(this.iceServers) ? 'TURN available' : 'STUN only');
+    return this.iceServers;
+  }
+
+  /**
    * Build a Peer with no signalling server behind it.
    * Tearing down first clears any half-finished attempt, but the tracker we
    * are mid-way through using has to survive that — it is the thing that
@@ -524,7 +547,7 @@ class App {
     this._teardownNet();
     if (keepTracker) this.tracker = tracker;
     this.manual = new ManualSignal();
-    this.peer = new Peer(this.manual, initiator);
+    this.peer = new Peer(this.manual, initiator, this.iceServers);
     this._watchPeer();
     return this.peer;
   }
@@ -540,6 +563,7 @@ class App {
    */
   async _directHost() {
     this._netStep('host-auto');
+    await this._ensureIce();
     const linkBox = document.getElementById('auto-link');
     linkBox.value = '';
     this._netStatus('working', 'Setting up matchmaking…');
@@ -590,6 +614,7 @@ class App {
   /** Join a room code automatically. Returns false if no tracker answers. */
   async _autoJoin(code) {
     this._netStep('guest-auto');
+    await this._ensureIce();
     this._netStatus('working', 'Finding your opponent…');
     this.tracker = new TrackerClient(code);
     if (!(await this.tracker.connect())) {
@@ -619,6 +644,7 @@ class App {
 
   async _directHostManual() {
     this._netStep('host-share');
+    await this._ensureIce();
     const box = document.getElementById('direct-offer');
     const linkBox = document.getElementById('direct-offer-link');
     box.value = '';
@@ -658,6 +684,7 @@ class App {
     }
     try {
       const { sdp } = await decodeSignal(input);
+      await this._ensureIce();
       this._netStatus('working', 'Building your reply…');
       const peer = this._directPeer(false);
       this.manual.deliver({ kind: 'offer', sdp });
@@ -697,9 +724,21 @@ class App {
     }
   }
 
+  /** Note whether we ended up direct or relayed, once ICE has settled. */
+  async _reportRoute() {
+    setTimeout(async () => {
+      const r = await this.peer?.routeType?.();
+      if (!r) return;
+      this._route = r;
+      this._netStat('ns-relay', r === 'relay'
+        ? 'relayed through TURN' : `direct (${r})`);
+    }, 1500);
+  }
+
   _directConnected(localPlayer) {
     this._netStatus('ok', 'Connected. Choose your delegate.');
     this._netStat('ns-peer', `direct (${localPlayer === 0 ? 'host' : 'guest'})`);
+    this._reportRoute();
     this._netStat('ns-signal', 'none — direct connection');
     audio.play('uiConfirm');
     // Host picks the seed; the guest adopts whatever arrives with `go`.
@@ -753,6 +792,12 @@ class App {
       else this._netStatus('error', 'Connection lost.');
     });
     this.peer.addEventListener('data', (ev) => this._onPeerMessage(ev.detail));
+    this.peer.addEventListener('unstable', (ev) => {
+      if (!this.juice) return;
+      this.juice.announce = ev.detail
+        ? { text: 'RECONNECTING', life: 600, maxLife: 600, big: false }
+        : null;
+    });
     this.peer.addEventListener('pcstate', (ev) => this._netStat('ns-peer', ev.detail));
   }
 
@@ -1019,6 +1064,7 @@ class App {
     ];
     if (this.netplay) {
       const s = this.netplay.stats;
+      if (this._route) lines.push(`route      ${this._route}`);
       lines.push(
         `ping       ${s.ping != null ? s.ping.toFixed(0) + ' ms' : '—'}`,
         `rollback/s ${s.rollbacksPerSec}`,

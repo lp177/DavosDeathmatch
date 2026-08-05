@@ -109,9 +109,21 @@ exchange that depends on nothing but the two of you.
 Run your own with `node server/server.js` — it serves the game and answers
 `/signal` from the same origin, so it is auto-detected with no configuration.
 
-> Peer-to-peer still needs a route between the two machines. Behind a strict
-> symmetric NAT it can fail regardless; that needs a TURN relay, which this
-> project doesn't ship.
+### When there is no direct route
+
+Two players on ordinary home connections can usually reach each other directly
+once STUN has told each its public address. Symmetric NAT, carrier-grade NAT and
+corporate firewalls defeat that entirely — ICE runs out of candidate pairs and
+the browser reports *"ICE failed, add a TURN server"*.
+
+So the server also hands out short-lived credentials for a **TURN relay** at
+`/ice`, and the game fetches them before every connection. Traffic then goes
+through the relay instead of directly, which costs latency but works from
+anywhere. `node server/server.js` offers a relay when given `TURN_SECRET` and
+`TURN_URLS`; without them it serves STUN only and says so at startup.
+
+The connection details panel reports which route was actually taken — direct or
+relayed — because "it works but it's relayed" is worth knowing.
 
 Direct connect is what makes online work from **GitHub Pages**, which is
 static-only and can't host a WebSocket endpoint. It's under *"No matchmaking
