@@ -99,94 +99,142 @@
       <h2>Multiplayer Versus</h2>
     </header>
 
-    <div class="lobby">
-      <div class="card">
-        <h3>Host a match</h3>
-        <p class="card__hint">Create a room and send the code to your opponent.</p>
-        <button class="btn btn--primary" data-action="net-host">Create Room</button>
-        <div class="roomcode" id="roomcode" hidden>
-          <span class="roomcode__value" id="roomcode-value">------</span>
-          <button class="btn btn--ghost btn--sm" data-action="copy-code">Copy</button>
+    <!-- Exactly one of these is ever visible. -->
+
+    <!-- Looking for a matchmaking server -->
+    <div class="lobby-step" data-step="probe">
+      <div class="probe"><span class="spinner" aria-hidden="true"></span>
+        <span>Looking for a matchmaking server…</span></div>
+    </div>
+
+    <!-- A server is available: room codes -->
+    <div class="lobby-step" data-step="rooms" hidden>
+      <div class="lobby">
+        <div class="card">
+          <h3>Host a match</h3>
+          <p class="card__hint">Create a room, then send your opponent the link.</p>
+          <button class="btn btn--primary" data-action="net-host">Create Room</button>
+          <div class="roomcode" id="roomcode" hidden>
+            <span class="roomcode__value" id="roomcode-value">------</span>
+            <button class="btn btn--ghost btn--sm" data-action="copy-code">Copy</button>
+          </div>
+          <button class="btn btn--accent" data-action="copy-room-link" id="copy-room-link" hidden>
+            Copy join link
+          </button>
         </div>
-        <button class="btn btn--accent btn--sm" data-action="copy-room-link" id="copy-room-link" hidden>
-          Copy join link
+
+        <div class="card">
+          <h3>Join a match</h3>
+          <p class="card__hint">Enter the six-character code your host gave you.</p>
+          <div class="field">
+            <input class="field__input" id="join-code" maxlength="6" autocomplete="off"
+                   spellcheck="false" placeholder=" " aria-labelledby="join-code-label">
+            <label class="field__label" id="join-code-label" for="join-code">Room code</label>
+            <div class="field__bar"></div>
+          </div>
+          <button class="btn btn--accent" data-action="net-join">Join Room</button>
+        </div>
+      </div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="direct-mode">
+        Connect directly instead (no server)
+      </button>
+    </div>
+
+    <!-- No server: pick a side -->
+    <div class="lobby-step" data-step="choose" hidden>
+      <p class="lobby__lead" id="choose-lead">
+        There's no matchmaking server here, so the two browsers connect to each
+        other directly. You'll swap one link and one reply.
+      </p>
+      <div class="lobby__pick">
+        <button class="btn btn--primary btn--lg" data-action="direct-host">
+          <span class="btn__icon" aria-hidden="true">✉️</span>
+          <span class="btn__body"><b>Invite a friend</b><small>Creates a link to send them</small></span>
+        </button>
+        <button class="btn btn--lg" data-action="direct-join">
+          <span class="btn__icon" aria-hidden="true">📥</span>
+          <span class="btn__body"><b>I received an invite</b><small>Paste the code you were sent</small></span>
         </button>
       </div>
+    </div>
 
-      <div class="card">
-        <h3>Join a match</h3>
-        <p class="card__hint">Enter the six-character code your host gave you.</p>
-        <div class="field">
-          <input class="field__input" id="join-code" maxlength="6" autocomplete="off"
-                 spellcheck="false" placeholder=" " aria-labelledby="join-code-label">
-          <label class="field__label" id="join-code-label" for="join-code">Room code</label>
-          <div class="field__bar"></div>
+    <!-- Host: share the link, then paste the reply -->
+    <div class="lobby-step" data-step="host-share" hidden>
+      <div class="wiz">
+        <div class="wiz__row">
+          <span class="wiz__num">1</span>
+          <div class="wiz__body">
+            <h3>Send this link to your opponent</h3>
+            <textarea class="codebox codebox--link" id="direct-offer-link" readonly rows="2"
+                      title="Your invite link"
+                      placeholder="Creating your invitation…"></textarea>
+            <div class="wiz__actions">
+              <button class="btn btn--primary" data-action="copy-offer-link">Copy invite link</button>
+              <button class="btn btn--ghost btn--sm" data-action="copy-offer">Copy raw code</button>
+            </div>
+            <textarea class="codebox" id="direct-offer" readonly rows="2" hidden></textarea>
+          </div>
         </div>
-        <button class="btn btn--accent" data-action="net-join">Join Room</button>
+
+        <div class="wiz__row">
+          <span class="wiz__num">2</span>
+          <div class="wiz__body">
+            <h3>Paste the reply they send back</h3>
+            <textarea class="codebox" id="direct-answer-in" rows="3"
+                      placeholder="Paste their reply code here…"></textarea>
+            <div class="wiz__actions">
+              <button class="btn btn--accent" data-action="direct-accept">Connect</button>
+            </div>
+          </div>
+        </div>
       </div>
+      <p class="card__hint direct__warn">Keep this page open — reloading cancels the invitation.</p>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="lobby-back">Start over</button>
+    </div>
+
+    <!-- Guest: paste the invite -->
+    <div class="lobby-step" data-step="guest-paste" hidden>
+      <div class="wiz">
+        <div class="wiz__row">
+          <span class="wiz__num">1</span>
+          <div class="wiz__body">
+            <h3>Paste the invite you were sent</h3>
+            <textarea class="codebox" id="direct-offer-in" rows="3"
+                      placeholder="Paste their invite code here…"></textarea>
+            <div class="wiz__actions">
+              <button class="btn btn--primary" data-action="direct-reply">Continue</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="lobby-back">Start over</button>
+    </div>
+
+    <!-- Guest: hand back the reply -->
+    <div class="lobby-step" data-step="guest-reply" hidden>
+      <div class="wiz">
+        <div class="wiz__row">
+          <span class="wiz__num">2</span>
+          <div class="wiz__body">
+            <h3>Send this reply code back</h3>
+            <textarea class="codebox" id="direct-answer" readonly rows="3"
+                      placeholder="Preparing your reply…"></textarea>
+            <div class="wiz__actions">
+              <button class="btn btn--primary" data-action="copy-answer">Copy reply code</button>
+            </div>
+            <p class="card__hint">
+              Once they paste it in, the fight starts on its own — keep this page open.
+            </p>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="lobby-back">Start over</button>
     </div>
 
     <div class="netstatus" id="netstatus" role="status" aria-live="polite">
       <span class="netstatus__dot" data-state="idle"></span>
       <span class="netstatus__text">Not connected</span>
     </div>
-
-    <!-- ─── Serverless fallback: works anywhere, including static hosts ─── -->
-    <details class="direct" id="direct">
-      <summary>No matchmaking server? Connect directly &mdash; nothing to install</summary>
-      <p class="card__hint">
-        Send your opponent a code through any chat you already use. The two
-        browsers then talk to each other directly, with nothing in between.
-      </p>
-
-      <div class="direct__pick">
-        <button class="btn btn--primary" data-action="direct-host">I'll invite</button>
-        <button class="btn" data-action="direct-join">I was invited</button>
-      </div>
-
-      <!-- Host: produce an invite link, then paste the reply -->
-      <div class="direct__step" id="direct-host-step" hidden>
-        <label class="direct__label" for="direct-offer-link">
-          <b>1.</b> Send your opponent this link &mdash; one click and they're in
-        </label>
-        <textarea class="codebox codebox--link" id="direct-offer-link" readonly rows="3"
-                  placeholder="Generating…"></textarea>
-        <button class="btn btn--primary" data-action="copy-offer-link">Copy invite link</button>
-        <details class="direct__alt">
-          <summary>Or send the raw code instead</summary>
-          <textarea class="codebox" id="direct-offer" readonly rows="4"></textarea>
-          <button class="btn btn--ghost btn--sm" data-action="copy-offer">Copy code</button>
-        </details>
-
-        <label class="direct__label" for="direct-answer-in">
-          <b>2.</b> Paste the reply code they send back
-        </label>
-        <p class="card__hint direct__warn">
-          Keep this page open &mdash; reloading it cancels the invitation.
-        </p>
-        <textarea class="codebox" id="direct-answer-in" rows="4"
-                  placeholder="Paste their reply code here…"></textarea>
-        <button class="btn btn--accent" data-action="direct-accept">Connect</button>
-      </div>
-
-      <!-- Guest: consume an invite, then hand back a reply -->
-      <div class="direct__step" id="direct-join-step" hidden>
-        <label class="direct__label" for="direct-offer-in" id="direct-offer-in-label">
-          <b>1.</b> Paste the invite code you were sent
-        </label>
-        <textarea class="codebox" id="direct-offer-in" rows="4"
-                  placeholder="Paste their invite code here…"></textarea>
-        <button class="btn btn--primary" data-action="direct-reply" id="direct-reply-btn">
-          Generate reply
-        </button>
-
-        <label class="direct__label" for="direct-answer" id="direct-answer-label" hidden>
-          <b>2.</b> Send this reply code back, then wait
-        </label>
-        <textarea class="codebox" id="direct-answer" readonly rows="4" hidden></textarea>
-        <button class="btn btn--accent" data-action="copy-answer" hidden>Copy reply code</button>
-      </div>
-    </details>
 
     <details class="netadvanced">
       <summary>Connection details</summary>
@@ -198,8 +246,8 @@
         <div><dt>Input delay</dt><dd id="ns-delay">—</dd></div>
       </dl>
       <p class="card__hint">
-        Peer-to-peer over WebRTC. The signalling server only introduces the two
-        browsers — game traffic never passes through it.
+        Peer-to-peer over WebRTC. A matchmaking server, when there is one, only
+        introduces the two browsers — game traffic never passes through it.
       </p>
     </details>
   </section>

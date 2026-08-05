@@ -28,7 +28,7 @@ import { Particles } from './fx/particles.js';
 import { Juice } from './fx/juice.js';
 import { Renderer } from './gfx/renderer.js';
 
-import { SignalClient, defaultSignalUrl, signallingHint } from './net/signal.js';
+import { SignalClient, defaultSignalUrl, signallingHint, probeSignal } from './net/signal.js';
 import { ManualSignal, waitForIce, encodeSignal, decodeSignal } from './net/manual.js';
 import { Peer } from './net/peer.js';
 import { Netplay } from './net/netplay.js';
@@ -143,6 +143,8 @@ class App {
 
       case 'direct-host':   this._directHost(); break;
       case 'direct-join':   this._directJoin(); break;
+      case 'direct-mode':   this._netStep('choose'); break;
+      case 'lobby-back':    this._lobbyRestart(); break;
       case 'direct-reply':  this._directReply(); break;
       case 'direct-accept': this._directAccept(); break;
       case 'copy-offer':      this._copyBox('direct-offer', btn); break;
@@ -322,14 +324,44 @@ class App {
      Online
      ══════════════════════════════════════════════════════ */
 
-  _toOnline() {
+  /** Show exactly one stage of the lobby. */
+  _netStep(name) {
+    for (const el of document.querySelectorAll('#screen-online .lobby-step')) {
+      el.hidden = el.dataset.step !== name;
+    }
+    this.netStep = name;
+  }
+
+  _lobbyRestart() {
+    this._teardownNet();
+    this._netStep(this.hasSignalling ? 'rooms' : 'choose');
+    this._netStatus('idle', 'Not connected');
+  }
+
+  async _toOnline() {
     this._teardownNet();
     this.show('online');
     document.getElementById('roomcode').hidden = true;
-    const hint = signallingHint();
-    if (hint) this._netStatus('error', hint);
-    else this._netStatus('idle', 'Not connected');
-    this._netStat('ns-signal', defaultSignalUrl() || '—');
+    document.getElementById('copy-room-link').hidden = true;
+
+    // Find out what's actually possible before offering anything. Showing a
+    // room-code form that cannot work — and a direct-connect panel next to
+    // it — is how you lose someone before they've played.
+    this._netStep('probe');
+    this._netStatus('working', 'Looking for a matchmaking server…');
+
+    const url = defaultSignalUrl();
+    this.hasSignalling = signallingHint() ? false : await probeSignal(url);
+
+    this._netStat('ns-signal', this.hasSignalling ? url : 'none — direct only');
+    if (this.hasSignalling) {
+      this._netStep('rooms');
+      this._netStatus('idle', 'Ready. Create a room or join one.');
+    } else {
+      this._netStep('choose');
+      this._netStatus('idle', 'No matchmaking server — connecting directly.');
+    }
+    return this.hasSignalling;
   }
 
   _netStatus(state, text) {
@@ -414,11 +446,13 @@ class App {
     const url = defaultSignalUrl();
     const noServer = /reach|timed out|Invalid signalling|No signalling/i.test(err.message || '');
     if (noServer) {
+      this.hasSignalling = false;
       this._netStatus('error',
-        `No matchmaking server at ${url || 'this address'}. `
-        + 'Open "Connect directly" below — it needs no server at all.');
-      const d = document.getElementById('direct');
-      if (d) d.open = true;
+        'That matchmaking server is unreachable — connecting directly instead.');
+      this._netStep('choose');
+      document.getElementById('choose-lead').textContent =
+        'The matchmaking server could not be reached, so the two browsers will '
+        + 'connect to each other directly. You\'ll swap one link and one reply.';
     } else {
       this._netStatus('error', err.message || `Could not ${what} a match.`);
     }
@@ -442,31 +476,22 @@ class App {
 
   /** Act on an invite the player arrived with. */
   async _openInvite(invite) {
-    this._toOnline();
+    await this._toOnline();
     if (invite.kind === 'room') {
       document.getElementById('join-code').value = invite.value;
       this._netStatus('working', 'Joining the room you were invited to…');
       await this._joinGame();
       return;
     }
-    // A direct-connect invite: fill it in and answer it straight away, so the
-    // player's only job is to send the reply code back.
-    const panel = document.getElementById('direct');
-    panel.open = true;
-    this._directJoin();
+    // A direct-connect invite: answer it straight away, so the player's only
+    // job is to send the reply code back. They never see the paste step.
     document.getElementById('direct-offer-in').value = invite.value;
-    document.getElementById('direct-offer-in-label').innerHTML =
-      '<b>1.</b> Invitation received';
+    this._netStep('guest-reply');
     this._netStatus('working', 'Answering the invitation…');
     await this._directReply();
   }
 
   /* ── Serverless direct connect ───────────────────────── */
-
-  _directShow(which) {
-    document.getElementById('direct-host-step').hidden = which !== 'host';
-    document.getElementById('direct-join-step').hidden = which !== 'join';
-  }
 
   /** Build a Peer with no signalling server behind it. */
   _directPeer(initiator) {
@@ -478,12 +503,13 @@ class App {
   }
 
   async _directHost() {
-    this._directShow('host');
+    this._netStep('host-share');
     const box = document.getElementById('direct-offer');
+    const linkBox = document.getElementById('direct-offer-link');
     box.value = '';
-    document.getElementById('direct-offer-link').value = '';
-    box.placeholder = 'Gathering connection details…';
-    this._netStatus('working', 'Building your invite…');
+    linkBox.value = '';
+    linkBox.placeholder = 'Creating your invitation…';
+    this._netStatus('working', 'Creating your invitation…');
     try {
       const peer = this._directPeer(true);
       await peer.start();
@@ -497,14 +523,14 @@ class App {
         .then(() => this._directConnected(0))
         .catch(() => { /* surfaced by the peer close handler */ });
     } catch (err) {
-      box.placeholder = 'Could not build an invite.';
-      this._netStatus('error', err.message || 'Could not build an invite.');
+      linkBox.placeholder = 'Could not create an invitation.';
+      this._netStatus('error', err.message || 'Could not create an invitation.');
       audio.play('uiError');
     }
   }
 
   _directJoin() {
-    this._directShow('join');
+    this._netStep('guest-paste');
     this._netStatus('idle', 'Paste the invite you were sent.');
   }
 
@@ -526,10 +552,7 @@ class App {
       await waitForIce(peer.pc);
 
       const code = await encodeSignal('answer', peer.pc.localDescription);
-      for (const id of ['direct-answer-label', 'direct-answer']) {
-        document.getElementById(id).hidden = false;
-      }
-      document.querySelector('[data-action="copy-answer"]').hidden = false;
+      this._netStep('guest-reply');
       document.getElementById('direct-answer').value = code;
       this._netStatus('working', 'Send that reply back and wait for them to connect.');
 

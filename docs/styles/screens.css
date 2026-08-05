@@ -453,39 +453,62 @@
 }
 
 /* ─────────────────────────────────────────────
-   Direct connect (serverless)
+   Online lobby — stepped flow
    ───────────────────────────────────────────── */
-.direct {
-  width: min(720px, 100%);
-  padding: 14px 18px;
-  border-radius: var(--r-md);
+.lobby-step { display: grid; gap: 16px; justify-items: center; width: min(720px, 100%); }
+.lobby-step[hidden] { display: none; }
+
+.probe {
+  display: flex; align-items: center; gap: 12px;
+  padding: 26px 30px;
+  border-radius: var(--r-lg);
+  background: var(--surf-1);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 14px;
+}
+.spinner {
+  width: 18px; height: 18px; flex: none;
+  border: 2px solid var(--line-2);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 700ms linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2s; }
+}
+
+.lobby__lead {
+  max-width: 540px; text-align: center;
+  font-size: 14px; line-height: 1.6; color: var(--text-2);
+}
+.lobby__pick { display: grid; gap: 12px; width: min(460px, 100%); }
+.lobby__pick .btn { width: 100%; }
+.lobby__alt { color: var(--text-3); }
+
+/* Numbered steps */
+.wiz {
+  display: grid; gap: 22px;
+  width: 100%;
+  padding: 22px;
+  border-radius: var(--r-lg);
   background: var(--surf-1);
   border: 1px solid var(--line-2);
+  box-shadow: var(--e-2);
 }
-.direct > summary {
-  cursor: pointer;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--accent);
-  list-style: none;
+.wiz__row { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+.wiz__num {
+  display: grid; place-items: center;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 800; font-size: 15px;
 }
-.direct > summary::-webkit-details-marker { display: none; }
-.direct > summary::before {
-  content: "▸ ";
-  display: inline-block;
-  transition: transform var(--t-fast) var(--ease-standard);
-}
-.direct[open] > summary::before { content: "▾ "; }
-.direct > summary:hover { color: #ffd97a; }
-.direct > .card__hint { margin: 10px 0 14px; }
-
-.direct__pick { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
-.direct__pick .btn { flex: 1; justify-content: center; min-width: 150px; }
-
-.direct__step { display: grid; gap: 8px; margin-top: 14px; }
-.direct__step[hidden] { display: none; }
-.direct__label { font-size: 13px; color: var(--text-2); margin-top: 6px; }
-.direct__label b { color: var(--accent); margin-right: 4px; }
+.wiz__body { display: grid; gap: 9px; min-width: 0; }
+.wiz__body h3 { font-size: 15px; }
+.wiz__actions { display: flex; gap: 9px; flex-wrap: wrap; }
 
 .codebox {
   width: 100%;
@@ -501,16 +524,9 @@
   word-break: break-all;
   transition: border-color var(--t-fast);
 }
-.codebox:hover { border-color: var(--line-2); }
 .codebox:focus { outline: none; border-color: var(--primary); }
 .codebox[readonly] { color: var(--accent); background: #05070b; }
+.codebox--link { color: var(--primary); font-size: 11.5px; }
 .codebox::placeholder { color: var(--text-3); font-style: italic; }
 
-.codebox--link { color: var(--primary); font-size: 11.5px; }
-.direct__alt { margin-top: 2px; }
-.direct__alt > summary {
-  cursor: pointer; font-size: 12px; color: var(--text-3); padding: 4px 0;
-}
-.direct__alt > summary:hover { color: var(--text-2); }
-.direct__alt > * + * { margin-top: 8px; }
-.direct__warn { color: var(--warn); }
+.direct__warn { color: var(--warn); text-align: center; }

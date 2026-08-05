@@ -47,6 +47,38 @@ export function signallingHint() {
   return null;
 }
 
+/**
+ * Is there actually a matchmaking server at this address?
+ *
+ * Worth knowing before drawing the lobby: without this the UI has to offer
+ * every option at once and let the player discover by failure which half of
+ * it works. A two-second probe buys a screen that only shows what can work.
+ */
+export function probeSignal(url, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    if (!url) { resolve(false); return; }
+    let ws;
+    try {
+      ws = new WebSocket(url);
+    } catch {
+      resolve(false);
+      return;
+    }
+    let settled = false;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { ws.close(); } catch { /* already closing */ }
+      resolve(ok);
+    };
+    const timer = setTimeout(() => done(false), timeoutMs);
+    ws.addEventListener('open', () => done(true));
+    ws.addEventListener('error', () => done(false));
+    ws.addEventListener('close', () => done(false));
+  });
+}
+
 export class SignalClient extends EventTarget {
   constructor(url) {
     super();
