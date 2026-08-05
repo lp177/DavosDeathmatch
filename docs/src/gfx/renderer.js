@@ -89,6 +89,7 @@ export class Renderer {
     w.fillRect(0, 0, VIEW_W, VIEW_H);
 
     this.stage.draw(w, cam, dt);
+    const wind = settings.juice.weather ? this.stage.windAt(this.stage.clock) : 0;
 
     w.save();
     cam.apply(w);
@@ -105,8 +106,23 @@ export class Renderer {
       const char = match.chars[i];
       const mv = f.moveId ? char.moves[f.moveId] : null;
       this.drawAura(w, f, char, mv);
-      drawFighter(w, f, char, mv, this.clock);
+      drawFighter(w, f, char, mv, this.clock, { wind });
       this.recordTrail(i, f, char, mv);
+    }
+    // Reflections, where the ground is wet enough to have them.
+    if (this.stage.isWet && settings.juice.weather) {
+      for (const i of order) {
+        const f = match.fighters[i];
+        if (f.y > 120) continue;
+        const char = match.chars[i];
+        const mv = f.moveId ? char.moves[f.moveId] : null;
+        w.save();
+        w.translate(0, 6);
+        w.scale(1, -1);          // mirrored in the puddle
+        drawFighter(w, f, char, mv, this.clock,
+                    { wind, alpha: 0.16, noShadow: true });
+        w.restore();
+      }
     }
 
     for (const p of match.projectiles) this.drawProjectile(w, p, match);
@@ -118,6 +134,13 @@ export class Renderer {
     if (settings.data.video.showHitboxes || extra.training) this.drawBoxes(w, match);
 
     w.restore();
+
+    // Weather sits over the world in screen space: it's between the
+    // camera and everything else, so it must not move with the camera.
+    if (settings.juice.weather) {
+      this.stage.drawWetFloor(w, cam);
+      this.stage.drawWeather(w, cam, dt);
+    }
 
     /* ── Post ──────────────────────────────────────────── */
     this.post(w, juice, cam);

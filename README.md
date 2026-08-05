@@ -96,24 +96,22 @@ they're connected, **no game traffic passes through it**.
 
 ### Two ways to connect
 
-Press **Invite a friend**, send the link, and whoever opens it first is in.
-Nothing to type, nothing to paste back.
+Press **Create Room**, send the link, and one click puts your opponent in the
+fight. A matchmaking server runs at `wss://lp177.fr/davos/signal` and is used
+by default when the game is served from somewhere that can't host one; point
+**Settings → Match → Signalling server** at your own to use that instead.
 
-That works with no server of ours because public WebTorrent trackers exist to
-introduce two browsers interested in the same thing — both ends derive the
-same room id from the link and the tracker passes the connection offer across.
-No account, nothing to host, works from GitHub Pages.
+If that server is unreachable, the lobby falls back to **Invite a friend**,
+which introduces the two browsers through a public WebTorrent tracker — same
+one-click experience, no server of ours involved. Failing that, a manual code
+exchange that depends on nothing but the two of you.
 
-If no tracker answers, the lobby falls back to a **manual exchange**: the host
-sends a code, the opponent's game answers it automatically, and they send one
-reply code back. Slower, but it depends on nothing but the two of you.
+Run your own with `node server/server.js` — it serves the game and answers
+`/signal` from the same origin, so it is auto-detected with no configuration.
 
-There's also a **room-code** path for the bundled server, auto-detected when
-you're serving the game from it, or configurable in **Settings → Match →
-Signalling server**.
-
-> The tracker is the only part of this that leans on infrastructure we don't
-> control, which is why it's strictly an accelerator with a fallback behind it.
+> Peer-to-peer still needs a route between the two machines. Behind a strict
+> symmetric NAT it can fail regardless; that needs a TURN relay, which this
+> project doesn't ship.
 
 Direct connect is what makes online work from **GitHub Pages**, which is
 static-only and can't host a WebSocket endpoint. It's under *"No matchmaking

@@ -289,6 +289,7 @@ export function buildSettings() {
     vg2.append(
       toggle('Chromatic aberration', 'RGB split on heavy impacts', 'video.chromatic'),
       toggle('Speed lines', 'Motion streaks on rushing moves', 'video.speedLines'),
+      toggle('Weather', 'Rain, snow, wind and wet ground', 'video.weather'),
       toggle('Afterimages', 'Ghost trails on dashes and supers', 'video.afterimages'),
       toggle('Film grain', 'Subtle noise over the whole frame', 'video.grain'),
     );

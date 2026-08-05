@@ -48,13 +48,13 @@ export const STAGES = {
       {
         name: 'Schatzalp Terrace', where: '2,540m',
         sky: ['#2b3f5e', '#16243a'], floor: '#dfe7f0', line: '#b9c6d6',
-        accent: '#8fd0ff', scenery: ['ridge', 'pines', 'railing'],
+        accent: '#8fd0ff', scenery: ['ridge', 'pines', 'railing', 'birds'],
         weather: 'snow', wind: 0.6,
       },
       {
         name: 'The Ravine', where: 'Somewhere below the terrace',
         sky: ['#101a26', '#05090e'], floor: '#c8d4e2', line: '#93a3b6',
-        accent: '#6fb4e8', scenery: ['cliffs', 'pines', 'wreck'],
+        accent: '#6fb4e8', scenery: ['cliffs', 'pines', 'wreck', 'birds'],
         weather: 'snow', wind: 1.0,
       },
     ],
@@ -90,13 +90,13 @@ export const STAGES = {
       {
         name: 'The Promenade', where: 'Davos Platz',
         sky: ['#1d2438', '#0b0f18'], floor: '#e8edf4', line: '#c2cbd8',
-        accent: '#ffd76e', scenery: ['shops', 'lights', 'crowd'],
+        accent: '#ffd76e', scenery: ['shops', 'lights', 'crowd', 'leaves'],
         weather: 'snow', wind: 0.5,
       },
       {
         name: 'Under the Bridge', where: 'The Landwasser, frozen',
         sky: ['#131a24', '#06090d'], floor: '#cfe0ea', line: '#9db6c6',
-        accent: '#7fd3e8', scenery: ['arches', 'ice', 'reeds'],
+        accent: '#7fd3e8', scenery: ['arches', 'ice', 'reeds', 'leaves'],
         weather: 'snow', wind: 0.7,
       },
     ],
@@ -111,8 +111,8 @@ export const STAGES = {
       {
         name: 'Cable Car Station', where: 'Jakobshorn · 2,590m',
         sky: ['#3a4a63', '#1a2334'], floor: '#eef4fa', line: '#c3d0de',
-        accent: '#bfe4ff', scenery: ['ridge', 'cables', 'pylon'],
-        weather: 'snow', wind: 1.1,
+        accent: '#bfe4ff', scenery: ['ridge', 'cables', 'pylon', 'birds'],
+        weather: 'blizzard', wind: 1.1,
       },
       {
         name: 'The Crevasse', where: 'Inside the glacier',
@@ -141,6 +141,15 @@ export class StageRenderer {
     this.gust = 0;
     this.crowdSeed = [];
     this.motes = [];
+    this.drops = [];
+    this.birds = [];
+    this.leaves = [];
+    this.splashes = [];
+  }
+
+  /** A wet floor reflects, and footsteps throw water. */
+  get isWet() {
+    return this.cfg.weather === 'rain' || this.cfg.weather === 'drip';
   }
 
   setStage(id, tier = 0) {
@@ -165,9 +174,57 @@ export class StageRenderer {
     for (let i = 0; i < 160; i++) {
       this.motes.push({ x: rnd(), y: rnd(), s: 0.4 + rnd() * 1.4, p: rnd() * TAU });
     }
+
+    // Weather is a fixed pool recycled off the bottom of the screen, so it
+    // costs the same whatever the wind is doing.
+    const w = this.cfg.weather;
+    const n = w === 'blizzard' ? 320 : w === 'rain' ? 260 : w === 'snow' ? 150 : w === 'drip' ? 26 : 0;
+    this.drops = [];
+    for (let i = 0; i < n; i++) {
+      this.drops.push({
+        x: rnd() * (VIEW_W + 400) - 200, y: rnd() * VIEW_H,
+        z: 0.35 + rnd() * 0.9,               // depth: nearer falls faster, draws bigger
+        len: 0.5 + rnd(), phase: rnd() * TAU,
+      });
+    }
+
+    this.birds = [];
+    if (this.cfg.scenery.includes('birds')) {
+      for (let i = 0; i < 5; i++) {
+        this.birds.push({
+          x: rnd() * VIEW_W * 2 - VIEW_W * 0.5, y: 60 + rnd() * 180,
+          sp: 0.5 + rnd() * 0.9, flap: rnd() * TAU, size: 0.6 + rnd() * 0.7,
+        });
+      }
+    }
+
+    this.leaves = [];
+    if (this.cfg.scenery.includes('leaves')) {
+      for (let i = 0; i < 22; i++) {
+        this.leaves.push({
+          x: rnd() * VIEW_W, y: rnd() * VIEW_H * 0.8,
+          spin: rnd() * TAU, sp: 0.4 + rnd() * 0.8, size: 3 + rnd() * 4,
+          hue: rnd(),
+        });
+      }
+    }
+    this.splashes = [];
   }
 
   get cfg() { return tierOf(this.id, this.tier); }
+
+  /** Something hit the wet floor here (screen x). */
+  splash(x, power = 1) {
+    if (!this.isWet) return;
+    for (let i = 0; i < Math.round(7 * power); i++) {
+      this.splashes.push({
+        x, y: 0,
+        vx: (Math.random() - 0.5) * 7 * power,
+        vy: 2 + Math.random() * 5 * power,
+        life: 16 + Math.random() * 14, max: 30,
+      });
+    }
+  }
 
   /** Wind strength right now, for cloth and scenery elsewhere. */
   windAt(clock) {
@@ -299,6 +356,8 @@ export class StageRenderer {
         case 'wreck': this._wreck(ctx, t, y); break;
         case 'shards': this._shards(ctx, t, y); break;
         case 'ice': this._iceField(ctx, t, y); break;
+        case 'birds': this._birds(ctx, wind); break;
+        case 'leaves': this._leaves(ctx, wind); break;
         default: break;
       }
     }
@@ -571,6 +630,160 @@ export class StageRenderer {
       ctx.lineTo(i * 140 + 60, y - 40 - ((i * 31) % 40));
       ctx.stroke();
     }
+  }
+
+  _birds(ctx, wind) {
+    ctx.fillStyle = '#0d1117';
+    for (const b of this.birds) {
+      b.x += (b.sp + wind * 2.2) * 0.8;
+      if (b.x > VIEW_W * 1.6) { b.x = -VIEW_W * 0.6; b.y = 60 + Math.random() * 180; }
+      b.flap += 0.16 + wind * 0.05;
+      const w = 11 * b.size;
+      const lift = Math.sin(b.flap) * 5 * b.size;
+      ctx.beginPath();
+      ctx.moveTo(b.x - w, b.y + lift);
+      ctx.quadraticCurveTo(b.x, b.y - 4 * b.size, b.x, b.y);
+      ctx.quadraticCurveTo(b.x, b.y - 4 * b.size, b.x + w, b.y + lift);
+      ctx.lineWidth = 2 * b.size;
+      ctx.strokeStyle = '#0d1117';
+      ctx.stroke();
+    }
+  }
+
+  _leaves(ctx, wind) {
+    for (const l of this.leaves) {
+      l.x += (0.6 + wind * 5) * l.sp;
+      l.y += Math.sin(l.spin) * 0.6 + 0.15;
+      l.spin += 0.06 + wind * 0.04;
+      if (l.x > VIEW_W + 40) { l.x = -40; l.y = Math.random() * VIEW_H * 0.7; }
+      if (l.y > VIEW_H) l.y = -20;
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.spin);
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = l.hue > 0.6 ? '#8a6136' : (l.hue > 0.3 ? '#6d5a30' : '#4e5a3a');
+      ctx.beginPath();
+      ctx.ellipse(0, 0, l.size, l.size * 0.42, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /**
+   * Weather, drawn in screen space over the world. Rain slants with the
+   * wind and lands; snow drifts; a car park just drips.
+   */
+  drawWeather(ctx, cam, dt) {
+    const t = this.cfg;
+    const w = t.weather;
+    if (!w) return;
+    const wind = this.windAt(this.clock);
+
+    if (w === 'rain') {
+      ctx.save();
+      ctx.strokeStyle = '#bcd6e8';
+      ctx.lineCap = 'round';
+      for (const d of this.drops) {
+        const speed = 26 * d.z;
+        d.y += speed * dt;
+        d.x += (2 + wind * 16) * d.z * dt;
+        if (d.y > VIEW_H) {
+          // Landing: a tick of spray at the bottom of its fall.
+          if (d.z > 0.8 && Math.random() < 0.3) this.splash(d.x, 0.25);
+          d.y = -20; d.x = Math.random() * (VIEW_W + 400) - 200;
+        }
+        if (d.x > VIEW_W + 200) d.x = -200;
+        ctx.globalAlpha = 0.1 + d.z * 0.3;
+        ctx.lineWidth = d.z * 1.6;
+        const len = 14 * d.len * d.z;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x - wind * 5 * d.z * len * 0.1, d.y - len);
+        ctx.stroke();
+      }
+      ctx.restore();
+    } else if (w === 'snow' || w === 'blizzard') {
+      const heavy = w === 'blizzard';
+      ctx.save();
+      ctx.fillStyle = '#ffffff';
+      for (const d of this.drops) {
+        d.y += (heavy ? 3.4 : 1.6) * d.z * dt;
+        // Flakes wander sideways rather than falling straight.
+        d.x += ((heavy ? 5 : 1.4) * wind + Math.sin(d.phase + this.clock * 0.03) * 0.9) * d.z * dt;
+        if (d.y > VIEW_H) { d.y = -10; d.x = Math.random() * (VIEW_W + 400) - 200; }
+        if (d.x > VIEW_W + 200) d.x = -200;
+        if (d.x < -200) d.x = VIEW_W + 200;
+        ctx.globalAlpha = 0.25 + d.z * 0.5;
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, d.z * (heavy ? 2.2 : 1.7), 0, TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else if (w === 'drip') {
+      ctx.save();
+      ctx.strokeStyle = '#9fc4d8';
+      ctx.lineWidth = 1.6;
+      for (const d of this.drops) {
+        d.y += 9 * d.z * dt;
+        if (d.y > VIEW_H) {
+          this.splash(d.x, 0.5);
+          d.y = 40 + Math.random() * 60;
+          d.x = Math.random() * VIEW_W;
+        }
+        ctx.globalAlpha = 0.4;
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(d.x, d.y - 9);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    this._drawSplashes(ctx, dt);
+    ctx.globalAlpha = 1;
+  }
+
+  _drawSplashes(ctx, dt) {
+    if (!this.splashes.length) return;
+    ctx.save();
+    ctx.fillStyle = '#cfe4f2';
+    for (let i = this.splashes.length - 1; i >= 0; i--) {
+      const s = this.splashes[i];
+      s.life -= dt;
+      if (s.life <= 0) { this.splashes.splice(i, 1); continue; }
+      s.x += s.vx * dt;
+      s.y += s.vy * dt;
+      s.vy -= 0.45 * dt;
+      if (s.y < 0) { s.y = 0; s.vy = 0; s.vx *= 0.6; }
+      ctx.globalAlpha = (s.life / s.max) * 0.7;
+      ctx.beginPath();
+      ctx.arc(s.x, FLOOR_SCREEN_Y - s.y, 1.6, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    // Don't let a long round accumulate spray forever.
+    if (this.splashes.length > 400) this.splashes.length = 400;
+  }
+
+  /** A sheen over the floor, for tiers that are wet. */
+  drawWetFloor(ctx, cam) {
+    if (!this.isWet) return;
+    const y = FLOOR_SCREEN_Y;
+    const g = ctx.createLinearGradient(0, y, 0, VIEW_H);
+    g.addColorStop(0, '#8fd0ff22');
+    g.addColorStop(1, '#8fd0ff00');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, y, VIEW_W, VIEW_H - y);
+    // A slow highlight crawling across the puddles.
+    ctx.globalAlpha = 0.09;
+    ctx.fillStyle = '#dff1ff';
+    const cx = (VIEW_W * 0.5) + Math.sin(this.clock * 0.006) * VIEW_W * 0.4;
+    const r = ctx.createRadialGradient(cx, y + 40, 10, cx, y + 40, 320);
+    r.addColorStop(0, '#dff1ff'); r.addColorStop(1, 'transparent');
+    ctx.fillStyle = r;
+    ctx.fillRect(0, y, VIEW_W, VIEW_H - y);
+    ctx.globalAlpha = 1;
   }
 
   _drawCrowd(ctx) {

@@ -316,6 +316,8 @@ export class Juice {
     this.px.dust(e.x, 0, e.hard ? 1.6 : 0.8);
     if (e.hard) this.cam.shake(0.1, 0.15);
     audio.play('land', { pan: this.pan(e.x), hard: e.hard });
+    // Landing in a puddle throws water; the stage decides whether there is any.
+    this.onSplash?.(e.x, e.hard ? 1.6 : 0.9);
   }
 
   onSfx(e) {

@@ -463,6 +463,16 @@ export function drawFighter(ctx, f, char, mv, clock, opts = {}) {
   const wear = opts.silhouette ? 0 : wearOf(f);
   const seed = (f.id ?? 0) * 37 + 11;
 
+  // Cloth reacts to two things: the weather, and how fast you're moving.
+  // Facing-relative, because everything here is drawn facing right.
+  pose.drift = (opts.wind ?? 0) * 9 * (f.facing || 1) - (f.vx || 0) * 1.5;
+  pose.airborne = f.y > 2;
+  pose.clock = clock;
+  // Look where you're going: ahead when advancing, down when falling.
+  pose.gaze = Math.max(-1.6, Math.min(1.6, (f.vx || 0) * (f.facing || 1) * 0.28));
+  pose.gazeY = Math.max(-1.4, Math.min(1.4, -(f.vy || 0) * 0.08));
+  pose.blinkSeed = (f.id ?? 0) * 0.37;
+
   ctx.save();
   ctx.translate(f.x, -f.y);
   ctx.scale(f.facing, 1);
@@ -481,11 +491,21 @@ export function drawFighter(ctx, f, char, mv, clock, opts = {}) {
   if (!opts.silhouette && !opts.noShadow) {
     ctx.save();
     ctx.scale(1 / pose.squashX, 1 / pose.squashY);
+    // Height shrinks and softens the shadow rather than only fading it; a
+    // hard ellipse reads as a black sticker stuck under the feet.
     const airFade = Math.max(0.16, 1 - f.y / 320);
-    ctx.globalAlpha = 0.42 * airFade * (opts.alpha ?? 1);
-    ctx.fillStyle = '#000';
+    const rx = 46 * airFade * pose.bulk;
+    const ry = 12 * airFade;
+    const a0 = 0.46 * airFade * (opts.alpha ?? 1);
+    const sg = ctx.createRadialGradient(0, 0, 1, 0, 0, rx);
+    sg.addColorStop(0, `rgba(0,0,0,${a0})`);
+    sg.addColorStop(0.62, `rgba(0,0,0,${a0 * 0.5})`);
+    sg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.translate(0, f.y);
+    ctx.scale(1, ry / rx);
+    ctx.fillStyle = sg;
     ctx.beginPath();
-    ctx.ellipse(0, f.y, 44 * airFade * pose.bulk, 11 * airFade, 0, 0, TAU);
+    ctx.arc(0, 0, rx, 0, TAU);
     ctx.fill();
     ctx.restore();
     ctx.globalAlpha = opts.alpha ?? 1;
@@ -576,12 +596,14 @@ function drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts, wear = 0, 
   const topW = 27 * b, botW = 22 * b;
   const chest = shoulderY;
 
-  // Jacket
+  // Jacket. The hem is a separate control point so it can flap.
+  const flap = (pose.drift ?? 0) * 0.7;
+  const hemLift = pose.airborne ? 6 : 0;
   ctx.fillStyle = col(look.suit);
   ctx.beginPath();
   ctx.moveTo(-topW, chest);
-  ctx.quadraticCurveTo(-topW - 5 * b, (chest + hipY) / 2, -botW, hipY + 4);
-  ctx.lineTo(botW, hipY + 4);
+  ctx.quadraticCurveTo(-topW - 5 * b, (chest + hipY) / 2, -botW + flap, hipY + 4 - hemLift);
+  ctx.lineTo(botW + flap, hipY + 4 - hemLift);
   ctx.quadraticCurveTo(topW + 5 * b, (chest + hipY) / 2, topW, chest);
   ctx.quadraticCurveTo(0, chest - 9, -topW, chest);
   ctx.closePath();
@@ -616,14 +638,17 @@ function drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts, wear = 0, 
     // Tie — length is a characterisation choice, not an accident.
     if (look.tie) {
       const len = 52 * (look.tieLength || 1);
+      // A swinging tie is most of what sells a heavy fighter as heavy.
+      const sway = (pose.drift ?? 0) * 0.9 + Math.sin((pose.clock ?? 0) * 0.07) * 2;
+      const lift = pose.airborne ? -8 : 0;
       ctx.fillStyle = look.tie;
       ctx.beginPath();
       ctx.moveTo(-5, chest + 2);
       ctx.lineTo(5, chest + 2);
       ctx.lineTo(3.2, chest + 12);
-      ctx.lineTo(6.5, chest + len);
-      ctx.lineTo(0, chest + len + 8);
-      ctx.lineTo(-6.5, chest + len);
+      ctx.lineTo(6.5 + sway * 0.6, chest + len + lift);
+      ctx.lineTo(0 + sway, chest + len + 8 + lift);
+      ctx.lineTo(-6.5 + sway * 0.6, chest + len + lift);
       ctx.lineTo(-3.2, chest + 12);
       ctx.closePath();
       ctx.fill();
@@ -728,13 +753,19 @@ function drawHead(ctx, look, pose, col, opts, clock, char, wear = 0, seed = 0) {
   // Eyes — a facing-right head shows both, the far one smaller.
   const squint = look.squint ?? 0;
   const brow = pose.brow;
-  const eyeH = 4.2 * (1 - squint * 0.5) * (brow > 0.5 ? 0.72 : 1);
+  // Blink every couple of seconds, offset per fighter, and let the pupils
+  // track where they're heading. Tiny, but it makes a face look awake.
+  const blink = ((clock * 0.011 + (pose.blinkSeed ?? 0)) % 1) > 0.965 ? 0.12 : 1;
+  const eyeH = 4.2 * (1 - squint * 0.5) * (brow > 0.5 ? 0.72 : 1) * blink;
+  const gx = pose.gaze ?? 0, gy = pose.gazeY ?? 0;
   ctx.fillStyle = '#f7f7f7';
-  ctx.beginPath(); ctx.ellipse(7, -3, 5.4, eyeH, 0, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(-6, -3, 4.4, eyeH * 0.9, 0, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#181c22';
-  ctx.beginPath(); ctx.arc(8.6, -3, 2.3, 0, TAU); ctx.fill();
-  ctx.beginPath(); ctx.arc(-4.8, -3, 2, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(7, -3, 5.4, Math.max(0.6, eyeH), 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-6, -3, 4.4, Math.max(0.5, eyeH * 0.9), 0, 0, TAU); ctx.fill();
+  if (blink > 0.5) {
+    ctx.fillStyle = '#181c22';
+    ctx.beginPath(); ctx.arc(8.6 + gx, -3 + gy, 2.3, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(-4.8 + gx, -3 + gy, 2, 0, TAU); ctx.fill();
+  }
 
   // Brows carry most of the expression.
   ctx.strokeStyle = shade(look.hair, -30);
@@ -789,7 +820,7 @@ function drawHead(ctx, look, pose, col, opts, clock, char, wear = 0, seed = 0) {
     ctx.stroke();
   }
 
-  drawHair(ctx, look, r, col, clock, wear);
+  drawHair(ctx, look, r, col, clock, wear, pose.drift ?? 0);
 
   /* — Damage on the face, drawn last so it sits over everything — */
   if (wear > 0.15) {
@@ -837,7 +868,7 @@ function drawHead(ctx, look, pose, col, opts, clock, char, wear = 0, seed = 0) {
   }
 }
 
-function drawHair(ctx, look, r, col, clock, wear = 0) {
+function drawHair(ctx, look, r, col, clock, wear = 0, drift = 0) {
   const c = col(look.hair);
   ctx.fillStyle = c;
   switch (look.hairStyle) {
@@ -865,7 +896,7 @@ function drawHair(ctx, look, r, col, clock, wear = 0) {
       ctx.ellipse(0, -r * 0.5, r * 0.98, r * 0.72, 0, Math.PI, TAU);
       ctx.fill();
       ctx.fillRect(-r * 0.98, -r * 0.55, r * 1.96, r * 0.35);
-      const sway = Math.sin(clock * 0.07) * 3;
+      const sway = Math.sin(clock * 0.07) * 3 + drift * 1.1;   // braids catch the wind
       for (const side of [-1, 1]) {
         ctx.strokeStyle = side > 0 ? c : shade(c, -18);
         ctx.lineWidth = 7;
@@ -928,7 +959,7 @@ function drawHair(ctx, look, r, col, clock, wear = 0) {
 
     case 'mane': {
       // Volume, sideburns, and a life of its own.
-      const w = Math.sin(clock * 0.08) * 2.4;
+      const w = Math.sin(clock * 0.08) * 2.4 + drift * 0.8;
       ctx.beginPath();
       ctx.moveTo(-r * 1.0, r * 0.34);
       ctx.quadraticCurveTo(-r * 1.5 - w, -r * 1.0, -r * 0.3, -r * 1.28);

@@ -15,6 +15,13 @@ import { settings } from '../core/settings.js';
 /** Hosts that definitely cannot serve the signalling endpoint. */
 const STATIC_HOSTS = /(\.github\.io|\.pages\.dev|\.netlify\.app|\.vercel\.app)$/i;
 
+/**
+ * The public instance, used when the game is served from somewhere that
+ * cannot host a WebSocket endpoint — GitHub Pages being the obvious case.
+ * Override it in Settings → Match → Signalling server to use your own.
+ */
+export const PUBLIC_SIGNAL_URL = 'wss://lp177.fr/davos/signal';
+
 export function defaultSignalUrl() {
   const configured = settings.data.net.signalUrl?.trim();
   if (configured) {
@@ -23,10 +30,15 @@ export function defaultSignalUrl() {
       .replace(/^http:/, 'ws:')
       .replace(/^https:/, 'wss:');
   }
+  // Nowhere to auto-detect from: use the public instance.
+  if (window.location.protocol === 'file:' || isStaticHost()) return PUBLIC_SIGNAL_URL;
+
   const loc = window.location;
-  if (loc.protocol === 'file:') return null;
   const proto = loc.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${proto}//${loc.host}/signal`;
+  // Relative to the directory the game is served from, not the site root, so
+  // a deployment under /davos/ finds /davos/signal rather than /signal.
+  const dir = loc.pathname.replace(/[^/]*$/, '');
+  return `${proto}//${loc.host}${dir}signal`;
 }
 
 export function isStaticHost() {
@@ -34,17 +46,7 @@ export function isStaticHost() {
 }
 
 export function signallingHint() {
-  if (settings.data.net.signalUrl?.trim()) return null;
-  if (isStaticHost()) {
-    return 'This page is served from a static host, which cannot run the matchmaking '
-         + 'server. Run `node server/server.js` somewhere reachable and paste its '
-         + 'address into Settings → Network → Signalling server.';
-  }
-  if (window.location.protocol === 'file:') {
-    return 'Opened directly from disk. Run `node server/server.js` and load the game '
-         + 'over http://localhost:8080 for online play.';
-  }
-  return null;
+  return null;   // there is always somewhere to connect now
 }
 
 /**

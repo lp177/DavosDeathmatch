@@ -45,6 +45,12 @@ class App {
     this.camera = new Camera();
     this.particles = new Particles();
     this.juice = new Juice(this.camera, this.particles);
+    // Splashes belong to the stage (it knows if the ground is wet) but are
+    // triggered by simulation events, which the juice layer owns.
+    this.juice.onSplash = (worldX, power) => {
+      const p = this.camera.toScreen(worldX, 0);
+      this.renderer.stage.splash(p.x, power);
+    };
     this.select = new SelectScreen();
 
     this.screen = 'home';
@@ -356,8 +362,10 @@ class App {
     this._netStep('probe');
     this._netStatus('working', 'Looking for a matchmaking server…');
 
+    // Probe briefly, but never sit waiting on something that cannot answer:
+    // a same-origin guess on a static host is known-dead before we try it.
     const url = defaultSignalUrl();
-    this.hasSignalling = signallingHint() ? false : await probeSignal(url);
+    this.hasSignalling = await probeSignal(url, 2200);
 
     this._netStat('ns-signal', this.hasSignalling ? url : 'none — direct only');
     if (this.hasSignalling) {

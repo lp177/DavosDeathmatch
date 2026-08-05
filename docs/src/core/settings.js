@@ -23,6 +23,7 @@ export const DEFAULTS = {
     particles: 1.0,      // 0..1.5 particle density
     chromatic: true,     // chromatic aberration on heavy hits
     speedLines: true,
+    weather: true,
     grain: true,
     afterimages: true,
     blood: 1.0,          // 0 = none, 1 = normal, 1.5 = Mortal-Kombat-grade
@@ -61,7 +62,10 @@ export const DEFAULTS = {
     layout: 'auto',      // 'auto' | 'qwerty' | 'azerty' | 'qwertz'
   },
   net: {
-    signalUrl: '',       // blank => auto-detect (same origin)
+    // Blank means "work it out": same origin when the game is served by the
+    // bundled server, otherwise the public instance below. Set this to your
+    // own `node server/server.js` address to use that instead.
+    signalUrl: '',
   },
   last: {
     p1: 'trump',
@@ -164,6 +168,8 @@ class Settings {
       particles:  r ? v.particles * 0.35 : v.particles,
       chromatic:  r ? false : v.chromatic,
       speedLines: r ? false : v.speedLines,
+      // Weather is scenery, not motion; reduced motion calms it, not kills it.
+      weather:    v.weather,
       grain:      r ? false : v.grain,
       afterimages: r ? false : v.afterimages,
       zoom:       r ? 0.15 : 1,
