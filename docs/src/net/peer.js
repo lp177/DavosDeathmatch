@@ -31,6 +31,8 @@ export class Peer extends EventTarget {
     this.pc = new RTCPeerConnection({ iceServers, iceCandidatePoolSize: 0 });
     this.channel = null;
     this.open = false;
+    this._offered = false;        // has start() produced the initial offer?
+    this._everConnected = false;  // has this connection ever been established?
     this._pendingCandidates = [];
     this._remoteSet = false;
 
@@ -60,6 +62,14 @@ export class Peer extends EventTarget {
       if (s === 'disconnected') {
         this.dispatchEvent(new CustomEvent('unstable', { detail: true }));
         this._clearRecovery();
+        // Only ever restart a connection that once worked. During a FIRST
+        // handshake there is nothing to recover: the candidates are still
+        // being exchanged, and restarting throws away the generation in
+        // flight and starts again from zero. A distant pair that simply
+        // needed six seconds gets killed at four and never connects, while
+        // two tabs on one machine — connected in milliseconds — never reach
+        // this code at all.
+        if (!this._everConnected) return;
         // Give it a few seconds to come back on its own, then force new
         // candidates, then finally admit defeat.
         this._recoverTimer = setTimeout(() => {
@@ -77,14 +87,24 @@ export class Peer extends EventTarget {
       }
 
       if (s === 'connected') {
+        this._everConnected = true;
         this._clearRecovery();
         this.dispatchEvent(new CustomEvent('unstable', { detail: false }));
       }
     });
 
-    // restartIce() asks for renegotiation; only the offerer may drive it.
+    /*
+     * restartIce() asks for renegotiation; only the offerer may drive it.
+     *
+     * createDataChannel() in this constructor also raises negotiationneeded,
+     * and it lands while start() is still awaiting createOffer — both then
+     * call setLocalDescription on a 'stable' connection and one of them throws.
+     * Which one is a coin toss decided by promise scheduling. start() owns the
+     * first offer; this handler only exists for restarts after it.
+     */
     this.pc.addEventListener('negotiationneeded', async () => {
-      if (!this.initiator || this.pc.signalingState !== 'stable') return;
+      if (!this.initiator || !this._offered) return;
+      if (this.pc.signalingState !== 'stable') return;
       try {
         const offer = await this.pc.createOffer({ iceRestart: true });
         await this.pc.setLocalDescription(offer);
@@ -127,6 +147,7 @@ export class Peer extends EventTarget {
     if (!this.initiator) return;
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
+    this._offered = true;      // renegotiation is allowed from here on
     this.signal.relay({ kind: 'offer', sdp: this.pc.localDescription.toJSON() });
   }
 

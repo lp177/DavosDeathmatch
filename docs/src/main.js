@@ -153,6 +153,7 @@ class App {
       case 'direct-host':   this._directHost(); break;
       case 'direct-join':   this._directJoin(); break;
       case 'direct-mode':   this._netStep('choose'); break;
+      case 'rooms-mode':    this._netStep('rooms'); break;
       case 'lobby-back':    this._lobbyRestart(); break;
       case 'invite-retry':  this._retryInvite(); break;
       case 'invite-abandon': this._abandonInvite(); break;
@@ -366,7 +367,8 @@ class App {
     // Reaching the ordinary lobby is a deliberate choice to stop following the
     // invite, so stop treating failures here as invite failures.
     this.invite = null;
-    this._netStep(this.hasSignalling ? 'rooms' : 'choose');
+    document.getElementById('rooms-mode').hidden = !this.hasSignalling;
+    this._netStep('choose');
     this._netStatus('idle', 'Not connected');
   }
 
@@ -390,13 +392,15 @@ class App {
     this.hasSignalling = await probeSignal(url, 4500);
 
     this._netStat('ns-signal', this.hasSignalling ? url : 'none — direct only');
-    if (this.hasSignalling) {
-      this._netStep('rooms');
-      this._netStatus('idle', 'Ready. Create a room or join one.');
-    } else {
-      this._netStep('choose');
-      this._netStatus('idle', 'No matchmaking server — connecting directly.');
-    }
+
+    // Lead with the direct invite whether or not a matchmaking server answered.
+    // It needs the least from the network — no server has to stay reachable to
+    // both players for the length of a lobby — and it is the path that has
+    // actually been connecting people. Room codes stay one click away for
+    // anyone who prefers them.
+    document.getElementById('rooms-mode').hidden = !this.hasSignalling;
+    this._netStep('choose');
+    this._netStatus('idle', 'Ready. Send your opponent a link.');
     return this.hasSignalling;
   }
 
@@ -411,20 +415,44 @@ class App {
     if (el) el.textContent = value;
   }
 
+  /**
+   * Returns the client it created. Callers must hold on to THAT object rather
+   * than re-reading this.signal after an await: a second attempt (a retry, a
+   * reclaim, an impatient second click) replaces this.signal, and a suspended
+   * first attempt would then resume onto the new socket — signalling into a
+   * room it never joined, with a peer that never hears it.
+   */
   async _connectSignal() {
-    this.signal = new SignalClient();
+    this.signal?.close();          // never leak the previous socket
+    const signal = new SignalClient();
+    this.signal = signal;
     this._netStatus('working', 'Reaching the matchmaking server…');
-    await this.signal.connect();
+    await signal.connect();
     this._netStat('ns-signal', 'connected');
+    return signal;
+  }
+
+  /**
+   * Build the Peer for an attempt, retiring any previous one first.
+   *
+   * Without this a failed or superseded attempt leaves a live Peer behind, and
+   * its 'closed' event later tears down the match that eventually worked.
+   */
+  _newPeer(initiator, signal) {
+    this.peer?.close();
+    this.peer = new Peer(signal, initiator, this.iceServers);
+    this._watchPeer();
+    return this.peer;
   }
 
   async _hostGame(reclaim = null) {
     const epoch = (this._netEpoch = (this._netEpoch || 0) + 1);
     try {
       await this._ensureIce();
-      await this._connectSignal();
-      this.signal.host(reclaim);
-      const { code } = await this.signal.once((m) => m.t === 'hosted');
+      const signal = await this._connectSignal();
+      if (this._netEpoch !== epoch) { signal.close(); return; }
+      signal.host(reclaim);
+      const { code } = await signal.once((m) => m.t === 'hosted');
 
       document.getElementById('roomcode').hidden = false;
       document.getElementById('roomcode-value').textContent = code;
@@ -435,7 +463,7 @@ class App {
 
       try {
         // No deadline: the room stays open for as long as this page is.
-        await this.signal.once((m) => m.t === 'peer-joined', Infinity);
+        await signal.once((m) => m.t === 'peer-joined', Infinity);
       } catch (err) {
         // The wait is long by design, and the link is already in someone's
         // chat window. If the socket died rather than the player giving up,
@@ -451,16 +479,27 @@ class App {
       }
       this._netStatus('working', 'Opponent found. Connecting directly…');
 
-      this.peer = new Peer(this.signal, true, this.iceServers);
-      this._watchPeer();
-      await this.peer.start();
-      await this.peer.waitOpen();
+      // Refresh the relay credentials NOW, not when the room was opened. The
+      // wait above is unbounded by design, so the credentials fetched back
+      // then may have expired — and if that first fetch happened to fail, the
+      // host would otherwise spend the room's whole life on STUN only while
+      // the guest quietly has TURN. Two peers on the same network still find
+      // each other that way, which is exactly why this survives local testing
+      // and fails between countries.
+      await this._ensureIce();
+      if (this._netEpoch !== epoch) { signal.close(); return; }
+
+      const peer = this._newPeer(true, signal);
+      await peer.start();
+      await peer.waitOpen();
+      if (this.peer !== peer) return;      // superseded while connecting
 
       this._netStatus('ok', 'Connected. Choose your delegate.');
       this._netStat('ns-peer', 'connected (host)');
       this._reportRoute();
       this._onlineSelect(0, seedFromString(code));
     } catch (err) {
+      if (this._netEpoch !== epoch) return;   // torn down on purpose
       this._netFailed(err, 'host');
     }
   }
@@ -474,22 +513,27 @@ class App {
       field.focus();
       return;
     }
+    // Same epoch discipline as the host: a second attempt must not be able to
+    // resume the first one's awaits onto its socket.
+    const epoch = (this._netEpoch = (this._netEpoch || 0) + 1);
     try {
       await this._ensureIce();
-      await this._connectSignal();
-      this.signal.join(code);
-      await this.signal.once((m) => m.t === 'joined');
+      const signal = await this._connectSignal();
+      if (this._netEpoch !== epoch) { signal.close(); return; }
+      signal.join(code);
+      await signal.once((m) => m.t === 'joined');
       this._netStatus('working', 'Room found. Connecting directly…');
 
-      this.peer = new Peer(this.signal, false, this.iceServers);
-      this._watchPeer();
-      await this.peer.waitOpen();
+      const peer = this._newPeer(false, signal);
+      await peer.waitOpen();
+      if (this.peer !== peer) return;      // superseded while connecting
 
       this._netStatus('ok', 'Connected. Choose your delegate.');
       this._netStat('ns-peer', 'connected (guest)');
       this._reportRoute();
       this._onlineSelect(1, seedFromString(code));
     } catch (err) {
+      if (this._netEpoch !== epoch) return;
       this._netFailed(err, 'join');
     }
   }
@@ -545,8 +589,8 @@ class App {
         'That matchmaking server is unreachable — connecting directly instead.');
       this._netStep('choose');
       document.getElementById('choose-lead').textContent =
-        'The matchmaking server could not be reached, so the two browsers will '
-        + 'connect to each other directly. You\'ll swap one link and one reply.';
+        'The matchmaking server could not be reached. Send your opponent a link '
+        + 'instead — the two browsers will connect to each other directly.';
     } else {
       this._netStatus('error', err.message || `Could not ${what} a match.`);
     }
@@ -887,18 +931,29 @@ class App {
   }
 
   _watchPeer() {
-    this.peer.addEventListener('closed', () => {
+    // Every listener checks that it still speaks for the current attempt. A
+    // Peer from an abandoned attempt stays alive until GC and still fires
+    // 'closed' — which, unguarded, ends the match that finally worked.
+    const peer = this.peer;
+    const current = () => this.peer === peer;
+
+    peer.addEventListener('closed', () => {
+      if (!current()) return;
       if (this.screen === 'match') this._endOnline('Connection lost.');
       else this._netStatus('error', 'Connection lost.');
     });
-    this.peer.addEventListener('data', (ev) => this._onPeerMessage(ev.detail));
-    this.peer.addEventListener('unstable', (ev) => {
-      if (!this.juice) return;
+    peer.addEventListener('data', (ev) => {
+      if (current()) this._onPeerMessage(ev.detail);
+    });
+    peer.addEventListener('unstable', (ev) => {
+      if (!current() || !this.juice) return;
       this.juice.announce = ev.detail
         ? { text: 'RECONNECTING', life: 600, maxLife: 600, big: false }
         : null;
     });
-    this.peer.addEventListener('pcstate', (ev) => this._netStat('ns-peer', ev.detail));
+    peer.addEventListener('pcstate', (ev) => {
+      if (current()) this._netStat('ns-peer', ev.detail);
+    });
   }
 
   _onlineSelect(localPlayer, seed) {

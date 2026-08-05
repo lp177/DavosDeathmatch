@@ -175,8 +175,8 @@
     <!-- No server: pick a side -->
     <div class="lobby-step" data-step="choose" hidden>
       <p class="lobby__lead" id="choose-lead">
-        There's no matchmaking server here, so the two browsers connect to each
-        other directly. You'll swap one link and one reply.
+        Send your opponent a link. The first person to open it joins you —
+        the two browsers then talk to each other directly.
       </p>
       <div class="lobby__pick">
         <button class="btn btn--primary btn--lg" data-action="direct-host">
@@ -188,6 +188,10 @@
           <span class="btn__body"><b>I received an invite</b><small>Paste the code you were sent</small></span>
         </button>
       </div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="rooms-mode"
+              id="rooms-mode" hidden>
+        Use a room code instead
+      </button>
     </div>
 
     <!-- Host: automatic matchmaking — just wait for them to click -->
