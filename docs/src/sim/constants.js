@@ -98,6 +98,8 @@ export const S = {
   ROUND_FREEZE: 22,
   AIR_ATTACK: 23,
   TAUNT:      24,
+  FALLING:    25,   // thrown off the edge, on the way down
+  DROPPING:   26,   // following them down, under control
 };
 
 /** Human-readable names, for the training-mode state readout. */
@@ -143,6 +145,17 @@ export const HIT = {
   THROW:    'throw',     // unblockable, techable
   UNBLOCK:  'unblock',   // unblockable
 };
+
+/* ── Stage transitions ──
+   A hard enough hit near the edge throws the loser off it and down to the
+   tier below. Deliberately hard to do by accident: it has to be a real
+   blow, landing while they're already cornered and travelling outward. */
+export const KNOCKOFF_ZONE = 190;     // how close to the edge counts as cornered
+export const KNOCKOFF_PUSH = 9;       // minimum horizontal knockback
+export const KNOCKOFF_DAMAGE = 110;   // extra damage from the fall
+export const KNOCKOFF_FALL = 46;      // frames of falling
+export const KNOCKOFF_LAND = 34;      // frames before the winner drops in
+export const KNOCKOFF_TOTAL = 108;    // whole sequence
 
 /* ── Round flow ── */
 export const ROUND_INTRO_FRAMES = 150;

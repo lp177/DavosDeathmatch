@@ -13,7 +13,7 @@ import { VIEW_W, VIEW_H, FLOOR_SCREEN_Y, S } from '../sim/constants.js';
 import { hurtbox, worldBox, movePhase } from '../sim/fighter.js';
 import { projBox } from '../sim/match.js';
 import { drawFighter, shade, animOf } from './caricature.js';
-import { StageRenderer, STAGES } from './stage.js';
+import { StageRenderer, STAGES, tierOf } from './stage.js';
 import { Hud } from './hud.js';
 import { settings } from '../core/settings.js';
 
@@ -58,9 +58,15 @@ export class Renderer {
     this.dpr = dpr;
   }
 
-  reset(stageId) {
-    this.stage.setStage(stageId);
+  reset(stageId, tier = 0) {
+    this.stage.setStage(stageId, tier);
     this.hud.reset();
+    this.trails = [[], []];
+  }
+
+  /** Switch tiers mid-match, after a knock-off. */
+  setTier(stageId, tier) {
+    this.stage.setStage(stageId, tier);
     this.trails = [[], []];
   }
 
@@ -87,7 +93,8 @@ export class Renderer {
     w.save();
     cam.apply(w);
 
-    this.stage.drawWalls(w);
+    // Highlight the ledge only while there's actually somewhere to fall.
+    this.stage.drawWalls(w, match.tier < match.maxTier && match.phase === 'fight');
     px.draw(w, -1);
     this.drawTrails(w, match);
 

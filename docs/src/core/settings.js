@@ -66,7 +66,7 @@ export const DEFAULTS = {
   last: {
     p1: 'trump',
     p2: 'greta',
-    stage: 'congress',
+    stage: 'random',
   },
 };
 

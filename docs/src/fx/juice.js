@@ -448,6 +448,41 @@ export class Juice {
     setTimeout(() => this.startFatality(e.winner, match), 900);
   }
 
+  onKnockoff(e, match) {
+    this.cam.shake(0.7, 1);
+    this.cam.impulse(e.dir * 22, 0);
+    this.cam.punchZoom(0.12);
+    this.cam.slow(50, 0.35);
+    this.flash = Math.min(1, this.flash + 0.7 * settings.juice.flash);
+    this.flashColor = '#ffd9a0';
+    this.chroma = settings.juice.chromatic ? 1 : 0;
+    this.announce = { text: 'OFF THE EDGE', life: 80, maxLife: 80, big: false };
+    this.px.debris(e.x, e.y + 60, 2.2, '#c9c2b4');
+    this.px.blood(e.x, e.y + 110, e.dir, 1.4);
+    audio.play('hitCrush', { pan: this.pan(e.x) });
+    input.rumble(e.victim, 1, 260);
+  }
+
+  onTierChange(e, match) {
+    // Landing hurts, and the whole picture changes.
+    this.cam.shake(0.9, 1);
+    this.cam.punchZoom(0.2);
+    this.flash = Math.min(1, this.flash + 0.9 * settings.juice.flash);
+    this.flashColor = '#ffffff';
+    this.vignette = 1;
+    this.px.explosion(e.x, 40, 1.3, '#c9c2b4');
+    this.px.gush(e.x, 70, 1.4);
+    this.px.splat(e.x, 2);
+    this.px.floatText(e.x, 200, String(e.damage), { color: '#ff5468', size: 46, life: 60 });
+    audio.play('explosion', { pan: this.pan(e.x), size: 1.3 });
+    audio.play('ko', { pan: this.pan(e.x) });
+    this.say(e.victim, 'hurt', match, 110);
+  }
+
+  onChaseDrop(e) {
+    this.px.speedLines(e.x, 200, 1, 2);
+  }
+
   onMeterFull(e) {
     audio.play('meterFull');
     this.meterPulse[e.fighter] = 1;

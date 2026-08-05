@@ -237,6 +237,32 @@ function buildPose(f, char, mv, clock) {
       break;
     }
 
+    case S.FALLING: {
+      // Tumbling backwards out of the arena, arms flailing.
+      const spin = f.stateFrame * 0.14;
+      p.lean = -0.5 - Math.sin(spin) * 0.9;
+      p.headRot = -0.6 - Math.sin(spin) * 0.5;
+      p.headY = 150 * h;
+      p.handR = { x: -20 + Math.sin(spin * 1.3) * 40, y: (150 + Math.cos(spin) * 30) * h };
+      p.handL = { x: -34 + Math.cos(spin * 1.1) * 36, y: (132 + Math.sin(spin) * 28) * h };
+      p.footR = { x: -30 + Math.sin(spin) * 30, y: 40 + Math.cos(spin * 0.9) * 26 };
+      p.footL = { x: -46 + Math.cos(spin) * 24, y: 24 + Math.sin(spin * 1.2) * 22 };
+      p.open = 1; p.brow = -1;
+      break;
+    }
+
+    case S.DROPPING: {
+      // Coming down under control: knees up, one fist cocked.
+      p.hipY = 76 * h;
+      p.headY = 152 * h;
+      p.lean = 0.12;
+      p.footR = { x: 22, y: 42 }; p.footL = { x: -18, y: 30 };
+      p.handR = { x: 6, y: 138 * h }; p.handL = { x: -26, y: 118 * h };
+      p.squashY = 1.06; p.squashX = 0.95;
+      p.brow = 1;
+      break;
+    }
+
     case S.THROWN: {
       p.lean = -1.1;
       p.headY = 146 * h; p.headRot = -0.9;

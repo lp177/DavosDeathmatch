@@ -14,6 +14,8 @@ import {
   S, IN, HIT, TICK_HZ, STAGE_HALF_W, PUSH_W, MAX_METER, MAX_HEALTH,
   ROUND_INTRO_FRAMES, ROUND_END_FRAMES, THROW_RANGE, THROW_TECH_WINDOW,
   DIZZY_THRESHOLD, CHIP_DIVISOR, ATTACK_BITS,
+  KNOCKOFF_ZONE, KNOCKOFF_PUSH, KNOCKOFF_DAMAGE, KNOCKOFF_FALL, KNOCKOFF_LAND,
+  KNOCKOFF_TOTAL,
 } from './constants.js';
 import {
   createFighter, copyFighter, tickTimers, updateFighter, applyPhysics,
@@ -54,6 +56,8 @@ export class Match {
     this.superFreezeOwner = -1;
     this.over = false;
     this.result = null;
+    this.tier = 0;
+    this.maxTier = 1;
 
     this.fighters = [
       createFighter(0, this.chars[0], -280, 1),
@@ -115,6 +119,7 @@ export class Match {
       superFreezeOwner: this.superFreezeOwner,
       over: this.over,
       result: this.result,
+      tier: this.tier,
       announcedFight: this.announcedFight,
       lowTimeWarned: this.lowTimeWarned,
       rng: this.rng.snapshot(),
@@ -135,6 +140,7 @@ export class Match {
     this.superFreezeOwner = s.superFreezeOwner;
     this.over = s.over;
     this.result = s.result;
+    this.tier = s.tier;
     this.announcedFight = s.announcedFight;
     this.lowTimeWarned = s.lowTimeWarned;
     this.rng.restore(s.rng);
@@ -160,7 +166,7 @@ export class Match {
     for (const p of this.projectiles) {
       mix(Math.round(p.x * 8)); mix(Math.round(p.y * 8)); mix(p.life);
     }
-    mix(this.frame); mix(this.timer | 0); mix(this.rng.snapshot());
+    mix(this.frame); mix(this.timer | 0); mix(this.tier); mix(this.rng.snapshot());
     return h >>> 0;
   }
 
@@ -232,6 +238,8 @@ export class Match {
       this.stepRoundEnd();
     } else if (this.phase === 'matchend') {
       this.stepMatchEnd();
+    } else if (this.phase === 'knockoff') {
+      this.stepKnockoff(inputs, ctx);
     }
 
     this.frame++;
@@ -786,6 +794,121 @@ export class Match {
 
     if (mv.quote && this.rng.chance(0.7)) {
       this.emit({ type: 'quote', fighter: atk.id, text: mv.quote, style: mv.voiceStyle });
+    }
+
+    this.maybeKnockoff(atk, def, push);
+  }
+
+  /**
+   * Did that blow put them over the edge?
+   *
+   * Three conditions, all required, so it never happens by accident: there
+   * has to be somewhere to fall to, they have to already be cornered, and
+   * the hit has to be genuinely heavy and pushing them outward.
+   */
+  maybeKnockoff(atk, def, push) {
+    if (this.tier >= this.maxTier) return;
+    if (this.phase !== 'fight') return;
+    if (def.health <= 0) return;
+    const edge = STAGE_HALF_W - PUSH_W;
+    const cornered = Math.abs(def.x) > edge - KNOCKOFF_ZONE;
+    const outward = (def.x > 0 && atk.facing > 0) || (def.x < 0 && atk.facing < 0);
+    const hard = (push.x ?? 0) >= KNOCKOFF_PUSH;
+    if (!cornered || !outward || !hard) return;
+
+    this.phase = 'knockoff';
+    this.phaseFrame = 0;
+    this.koffVictim = def.id;
+    this.koffDir = def.x > 0 ? 1 : -1;
+    def.state = S.FALLING;
+    def.stateFrame = 0;
+    def.moveId = null;
+    def.hitstun = KNOCKOFF_FALL;
+    def.hitstop = 0;
+    def.vx = this.koffDir * 9;
+    def.vy = 7;
+    atk.hitstop = 0;
+    this.hitstop = 0;
+    this.emit({ type: 'knockoff', victim: def.id, dir: this.koffDir, x: def.x, y: def.y });
+  }
+
+  /**
+   * The fall, the landing, and the winner following them down. Purely a
+   * scripted sequence — neither player has control until it resolves.
+   */
+  stepKnockoff(inputs, ctx) {
+    const victim = this.fighters[this.koffVictim];
+    const chaser = this.fighters[1 - this.koffVictim];
+    tickTimers(victim, inputs[this.koffVictim]);
+    tickTimers(chaser, inputs[1 - this.koffVictim]);
+
+    const f = this.phaseFrame;
+
+    if (f < KNOCKOFF_FALL) {
+      // Out past the edge and down out of frame.
+      victim.x += this.koffDir * 6;
+      victim.y -= 14;
+      victim.stateFrame++;
+      chaser.stateFrame++;
+      chaser.vx *= 0.85;
+      applyPhysics(chaser);
+      return;
+    }
+
+    if (f === KNOCKOFF_FALL) {
+      // Land on the tier below, and pay for it.
+      this.tier++;
+      victim.health -= KNOCKOFF_DAMAGE;
+      victim.totalDamage += 0;
+      victim.stun += 26;
+      chaser.totalDamage += KNOCKOFF_DAMAGE;
+      victim.x = this.koffDir * (STAGE_HALF_W - PUSH_W - 60);
+      victim.y = 0; victim.vx = 0; victim.vy = 0;
+      knockdown(victim);
+      // The winner is still up top for a moment.
+      chaser.x = this.koffDir * (STAGE_HALF_W - PUSH_W - 300);
+      chaser.y = 0; chaser.vx = 0; chaser.vy = 0;
+      chaser.state = S.IDLE; chaser.stateFrame = 0;
+      this.emit({
+        type: 'tierChange', tier: this.tier, victim: this.koffVictim,
+        damage: KNOCKOFF_DAMAGE, x: victim.x,
+      });
+      if (victim.health <= 0) { this.beginKo(1 - this.koffVictim); return; }
+      return;
+    }
+
+    if (f === KNOCKOFF_FALL + KNOCKOFF_LAND) {
+      // The winner drops in after them, unhurt — they chose to jump.
+      chaser.state = S.DROPPING;
+      chaser.stateFrame = 0;
+      chaser.y = 340;
+      chaser.vy = -4;
+      chaser.x = victim.x - this.koffDir * 230;
+      this.emit({ type: 'chaseDrop', fighter: chaser.id, x: chaser.x });
+    }
+
+    if (f > KNOCKOFF_FALL) {
+      victim.stateFrame++;
+      victim.vx *= 0.86;
+      applyPhysics(victim);
+      if (chaser.state === S.DROPPING) {
+        chaser.vy -= 1.4;
+        chaser.y += chaser.vy;
+        if (chaser.y <= 0) {
+          chaser.y = 0; chaser.vy = 0;
+          chaser.state = S.LANDING; chaser.stateFrame = 0;
+          this.emit({ type: 'land', x: chaser.x, y: 0, hard: true });
+        }
+      } else {
+        chaser.stateFrame++;
+        applyPhysics(chaser);
+      }
+    }
+
+    if (f >= KNOCKOFF_TOTAL) {
+      this.phase = 'fight';
+      this.phaseFrame = 0;
+      this.updateFacing();
     }
   }
 

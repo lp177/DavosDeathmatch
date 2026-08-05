@@ -15,7 +15,7 @@ import { TICK_MS, VIEW_W, VIEW_H, MAX_METER, IN } from './sim/constants.js';
 import { Match } from './sim/match.js';
 import { Ai } from './sim/ai.js';
 import { ROSTER, ROSTER_ORDER } from './data/roster.js';
-import { STAGE_ORDER, STAGES } from './gfx/stage.js';
+import { STAGE_ORDER, STAGES, tierOf } from './gfx/stage.js';
 
 import { settings } from './core/settings.js';
 import { input } from './core/input.js';
@@ -201,7 +201,10 @@ class App {
     input.solo = mode !== 'local';
     this.select.close();
 
-    const stageId = stage || STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
+    const stageId = stage ||
+      settings.data.last.stage === 'random' || !STAGES[settings.data.last.stage]
+        ? STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)]
+        : settings.data.last.stage;
     const s = settings.data.match;
     const cfg = cfgOverride || {
       chars,
@@ -217,7 +220,7 @@ class App {
     this.cfg = cfg;
     this.match = new Match(cfg);
 
-    this.renderer.reset(cfg.stage);
+    this.renderer.reset(cfg.stage, 0);
     this.camera.reset();
     this.particles.clear();
     this.juice.reset();
@@ -251,9 +254,10 @@ class App {
       this._earlyNetMessages = null;
     }
 
-    const st = STAGES[cfg.stage];
-    const char = ROSTER[cfg.chars[0]];
-    audio.music?.start({ bpm: char.music.bpm, root: char.music.root, pattern: char.music.pattern });
+    // Music belongs to the place, not the fighter — a stage should sound
+    // like where it is.
+    const st = STAGES[cfg.stage] || STAGES.congress;
+    audio.music?.start({ ...st.music });
     audio.music?.setIntensity(0.7);
 
     this.show('match');
@@ -823,6 +827,15 @@ class App {
     }
 
     this.juice.handle(m.events, m);
+
+    // Falling to a lower tier swaps the scenery and darkens the music.
+    for (const e of m.events) {
+      if (e.type === 'tierChange') {
+        this.renderer.setTier(this.cfg.stage, e.tier);
+        const st = STAGES[this.cfg.stage] || STAGES.congress;
+        audio.music?.start({ ...st.music, root: st.music.root - 5, bpm: st.music.bpm - 4 });
+      }
+    }
 
     if (this.cfg?.training) {
       for (const f of m.fighters) {

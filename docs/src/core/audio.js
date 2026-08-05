@@ -389,7 +389,26 @@ const SOUNDS = {
    round is close, which is cheap drama.
    ══════════════════════════════════════════════════════════════ */
 
-const SCALE_MINOR = [0, 2, 3, 5, 7, 8, 10];
+/* Modes give each stage its own colour without writing eight tunes.
+   Minor is the default fighting-game menace; phrygian is that flattened
+   second that sounds like money and threat; lydian's sharp fourth reads as
+   thin, high air; dorian sits between, open and a bit wistful. */
+const MODES = {
+  minor:    [0, 2, 3, 5, 7, 8, 10],
+  dorian:   [0, 2, 3, 5, 7, 9, 10],
+  phrygian: [0, 1, 3, 5, 7, 8, 10],
+  lydian:   [0, 2, 4, 6, 7, 9, 11],
+};
+
+/* Kits change what the rhythm section is doing, not just its tuning. */
+const KITS = {
+  hall:   { kick: [0, 4, 8, 12], snare: [4, 12], hat: 2, hatGain: 0.07, bassOct: 0, stab: 0.07 },
+  wide:   { kick: [0, 8], snare: [8], hat: 4, hatGain: 0.05, bassOct: -12, stab: 0.1 },
+  club:   { kick: [0, 4, 8, 12, 14], snare: [4, 12], hat: 1, hatGain: 0.055, bassOct: 0, stab: 0.05 },
+  street: { kick: [0, 6, 8, 14], snare: [4, 12], hat: 2, hatGain: 0.06, bassOct: 0, stab: 0.12 },
+};
+
+const SCALE_MINOR = MODES.minor;
 
 class MusicEngine {
   constructor(engine) {
@@ -406,9 +425,17 @@ class MusicEngine {
 
   start(opts = {}) {
     if (!this.e.ready) return;
+    const changed = opts.root !== this.root || opts.bpm !== this.bpm ||
+                    opts.mode !== this.modeName || opts.kit !== this.kitName;
     this.bpm = opts.bpm ?? 148;
     this.root = opts.root ?? 55;
-    this.pattern = opts.pattern ?? 0;
+    this.pattern = opts.arp ?? opts.pattern ?? 0;
+    this.modeName = opts.mode ?? 'minor';
+    this.kitName = opts.kit ?? 'hall';
+    this.scale = MODES[this.modeName] || MODES.minor;
+    this.kit = KITS[this.kitName] || KITS.hall;
+    // Restarting on a change lets a stage swap take effect immediately.
+    if (this.playing && changed) this.step = 0;
     if (this.playing) return;
     this.playing = true;
     this.step = 0;
@@ -445,38 +472,36 @@ class MusicEngine {
     const s16 = step % 16;
     const bar = Math.floor(step / 16);
     const I = this.intensity;
+    const kit = this.kit || KITS.hall;
+    const scale = this.scale || MODES.minor;
 
-    // Kick — four on the floor with a syncopated pickup.
-    if (s16 % 4 === 0 || s16 === 14) {
+    if (kit.kick.includes(s16)) {
       this._env(bus, t, { type: 'sine', f0: 150, f1: 42, dur: 0.19, gain: 0.5 * I });
       this._noiseHit(bus, t, 0.03, 0.16 * I, 'lowpass', 240);
     }
-    // Snare/clap on the backbeat.
-    if (s16 === 4 || s16 === 12) {
+    if (kit.snare.includes(s16)) {
       this._noiseHit(bus, t, 0.13, 0.2 * I, 'bandpass', 1900);
       this._env(bus, t, { type: 'triangle', f0: 320, f1: 180, dur: 0.08, gain: 0.1 * I });
     }
-    // Hats.
-    if (s16 % 2 === 1) {
-      this._noiseHit(bus, t, 0.032, 0.07 * I, 'highpass', 8200);
+    if (s16 % kit.hat === kit.hat - 1) {
+      this._noiseHit(bus, t, 0.032, kit.hatGain * I, 'highpass', 8200);
     }
-    // Bass — root/fifth pulse, dropping to the relative sixth every 4th bar.
+    // Bass walks the stage's own mode rather than a fixed minor line.
     if (s16 % 2 === 0) {
-      const seq = [0, 0, 7, 0, 0, 0, 10, 0, 0, 0, 7, 0, 3, 3, 5, 5];
-      const semi = seq[s16] + (bar % 4 === 3 ? -4 : 0);
+      const steps = [0, 0, 4, 0, 0, 0, 6, 0, 0, 0, 4, 0, 2, 2, 3, 3];
+      const deg = scale[steps[s16] % 7];
+      const semi = deg + (bar % 4 === 3 ? -5 : 0) + kit.bassOct;
       this._env(bus, t, { type: 'sawtooth', f0: this._note(semi), f1: this._note(semi),
                           dur: dur * 1.7, gain: 0.15 * I, filter: 420 + 500 * I });
     }
-    // Arp — only once the fight heats up.
     if (I > 0.75 && s16 % 2 === 1) {
-      const deg = SCALE_MINOR[(step + this.pattern) % 7];
+      const deg = scale[(step + this.pattern) % 7];
       this._env(bus, t, { type: 'square', f0: this._note(deg + 24), f1: this._note(deg + 24),
                           dur: dur * 1.2, gain: 0.05 * (I - 0.6), filter: 2600 });
     }
-    // Bar-line stab.
     if (s16 === 0 && bar % 2 === 0) {
       this._env(bus, t, { type: 'sawtooth', f0: this._note(12), f1: this._note(12),
-                          dur: 0.3, gain: 0.07 * I, filter: 1400 });
+                          dur: 0.3, gain: kit.stab * I, filter: 1400 });
     }
   }
 

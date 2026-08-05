@@ -13,6 +13,7 @@ import { audio } from '../core/audio.js';
 import { ACTIONS } from '../sim/constants.js';
 import { defaultSignalUrl, isStaticHost } from '../net/signal.js';
 import { keyboardLayout } from '../core/keyboard.js';
+import { STAGES, STAGE_ORDER } from '../gfx/stage.js';
 
 /* ── Control factories ────────────────────────────────── */
 
@@ -338,6 +339,13 @@ export function buildSettings() {
         { value: 99, label: '99 seconds' },
         { value: 0, label: 'No limit' },
       ]),
+      selectRow('Stage', 'last.stage', [
+        { value: 'random', label: 'Random' },
+        ...STAGE_ORDER.map((id) => ({ value: id, label: STAGES[id].name })),
+      ]),
+      el('p', 'card__hint',
+        'Every stage has a lower level. Knock a cornered opponent off the edge '
+        + 'with a heavy blow and the fight continues down there — at a cost to them.'),
       selectRow('CPU difficulty', 'match.difficulty', [
         { value: 'tourist', label: 'Tourist' },
         { value: 'normal', label: 'Delegate' },
