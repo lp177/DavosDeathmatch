@@ -760,7 +760,12 @@ class App {
     // Slow motion is a local flourish; online must run at real speed or
     // the two peers drift apart.
     const timeScale = this.mode === 'online' ? 1 : this.camera.slowmo;
+    // Two clocks: dtFrames drives the world (and slows with it), dtReal drives
+    // anything whose duration is a promise to the player — how long slow motion
+    // lasts, how long a finisher takes.
+    const dtReal = Math.min(4, elapsed / TICK_MS);
     const dtFrames = Math.min(4, (elapsed / TICK_MS) * timeScale);
+    this.dtReal = dtReal;
 
     if (this.screen === 'match' && this.match && !this.paused) {
       this.acc += elapsed * timeScale;
@@ -831,7 +836,9 @@ class App {
                          m.fighters[1].health / m.fighters[1].maxHealth);
     audio.music?.setIntensity(low < 0.3 ? 1.2 : low < 0.6 ? 0.95 : 0.75);
 
-    if (m.over && m.phase === 'matchend' && m.phaseFrame > 150) {
+    // Let the finisher play out before the results screen takes over.
+    if (m.over && m.phase === 'matchend' && m.phaseFrame > 150 &&
+        !this.juice.fatalityRunning) {
       this._showResults();
     }
   }
@@ -839,6 +846,7 @@ class App {
   _render(dt) {
     const m = this.match;
     this.juice.update(dt);
+    if (m) this.juice.updateFatality(this.dtReal ?? dt, m);
     this.particles.update(dt);
 
     if (m) {
@@ -848,7 +856,7 @@ class App {
         x: (a.x + b.x) / 2,
         y: Math.max(0, (a.y + b.y) / 2 - 40) * 0.35,
         spread,
-      });
+      }, this.dtReal ?? dt);
       this.renderer.draw(m, this.camera, this.particles, this.juice, dt, {
         debug: settings.data.video.showFps,
         training: this.cfg?.training,
@@ -856,7 +864,7 @@ class App {
       });
     } else {
       // Idle attract backdrop behind the menus.
-      this.camera.update(dt, null);
+      this.camera.update(dt, null, this.dtReal ?? dt);
       const ctx = this.renderer.ctx;
       this.renderer.stage.setStage('congress');
       const w = this.renderer.wctx;

@@ -65,6 +65,8 @@ const trump = finalise({
     build: 'heavy', height: 1.04,
     aura: '#ffc64d', props: [],
   },
+  trophy: { kind: 'prop', label: 'THE RED TIE', color: '#d21f3c' },
+  fatalityLine: ['You are fired.| Permanently.', 'Nobody rips out a spine| better than me.'],
   taunts: ['Nobody knew fighting could be so complicated.', 'You\'re fired!', 'Tremendous.'],
   winQuotes: ['I have the best knockouts. Everybody says so.',
               'This was a rigged fight, but I still won it. Bigly.'],
@@ -84,7 +86,8 @@ const trump = finalise({
       input: { motion: 'qcf', button: IN.LP | IN.HP },
       startup: 13, active: 2, recovery: 27,
       cancel: ['super'],
-      quote: 'Nobody has a better card. Nobody.',
+      quote: ['Nobody has a better card. Nobody.', 'Five million dollars. A bargain.',
+              'Gold card. Very exclusive. Very beautiful.'],
       spawns: [{
         f: 13, kind: 'card', x: 72, y: 112, vx: 12, w: 58, h: 42,
         damage: 72, chip: 11, hitstun: 18, blockstun: 12, hitstop: 8,
@@ -101,7 +104,8 @@ const trump = finalise({
       push: { x: 10 }, blockPush: 9,
       armor: { hits: 1, frames: 26 },
       boxes: [box(10, 15, 38, 0, 100, 152)],
-      quote: 'Tariffs. Beautiful tariffs.',
+      quote: ['Tariffs. Beautiful tariffs.', 'Trade wars are good,| and easy to win.',
+              'They are going to pay for this wall.', 'Nobody builds walls better than me.'],
       spawns: [{
         f: 10, kind: 'wall', x: 104, y: 78, vx: 0, w: 56, h: 158,
         damage: 34, chip: 6, hitstun: 14, blockstun: 10, hitstop: 6,
@@ -117,7 +121,7 @@ const trump = finalise({
       push: { x: 5, y: 16 }, knockdown: true, invuln: 9,
       curve: [{ f: 0, vx: 3.4, vy: 17.5 }],
       boxes: [box(4, 15, 24, 88, 92, 136)],
-      quote: 'Covfefe!',
+      quote: ['Covfefe!', 'You are fired!', 'Wrong!', 'Nobody hits harder. Nobody.'],
       sfx: 'whoosh',
     }),
 
@@ -129,7 +133,9 @@ const trump = finalise({
       damage: 152, stun: 28, hitstun: 36, hitstop: 16,
       push: { x: 11, y: 14 }, hitType: HIT.THROW, knockdown: true,
       boxes: [box(8, 10, 14, 28, 100, 146)],
-      quote: "Grab 'em by the pussy. They let you do it.",
+      quote: ["Grab 'em by the pussy. They let you do it.",
+              "When you are a star,| they let you do it.",
+              "I did not even wait."],
     }),
 
     hormuz: move({
@@ -137,7 +143,9 @@ const trump = finalise({
       input: { motion: 'qcfx2', button: IN.LP | IN.HP | IN.SUPER },
       meterCost: 1000, freeze: 38,
       startup: 10, active: 46, recovery: 38,
-      quote: 'We liberated it. It was never blocked, but we liberated it.',
+      quote: ['We liberated it.| It was never blocked,| but we liberated it.',
+              'Fire and fury| like the world has never seen.',
+              'We have the greatest military.| Nobody even close.'],
       spawns: [
         { f: 12, kind: 'jet', x: 20, y: 268, vx: 15, vy: -1.4, w: 96, h: 54,
           damage: 82, chip: 12, hitstun: 15, blockstun: 10, hitstop: 6, push: { x: 5, y: 4 },
@@ -193,6 +201,11 @@ const greta = finalise({
     build: 'slim', height: 0.82,
     aura: '#7ee787', props: ['placard'],
   },
+  // Taking her placard is funnier than taking her heart, and she'd
+  // probably tell you the placard matters more.
+  trophy: { kind: 'prop', label: 'THE PLACARD', color: '#7ee787' },
+  fatalityLine: [{ text: 'You have stolen| my dreams.| I am taking your spine.', style: 'rage' },
+                 { text: 'How.| Dare.| You.', style: 'rage' }],
   taunts: [
     { text: 'You have stolen my dreams| and my childhood| with your empty words.', style: 'grief' },
     { text: 'How.| Dare.| You.', style: 'rage' },
@@ -218,7 +231,8 @@ const greta = finalise({
       input: { motion: 'qcf', button: IN.LP | IN.HP },
       startup: 11, active: 3, recovery: 24,
       cancel: ['super'],
-      quote: 'How.| Dare.| You!', voiceStyle: 'rage',
+      quote: ['How.| Dare.| You!', 'You are failing us!',
+              'The eyes of all future generations| are upon you!'], voiceStyle: 'rage',
       spawns: [{
         f: 11, kind: 'shout', x: 62, y: 118, vx: 10.5, w: 78, h: 62,
         damage: 64, chip: 10, hitstun: 18, blockstun: 13, hitstop: 9,
@@ -232,7 +246,9 @@ const greta = finalise({
       input: { motion: 'qcb', button: IN.LP | IN.HP },
       startup: 14, active: 4, recovery: 30,
       cancel: ['super'],
-      quote: 'Blah, blah, blah.| Blah, blah, blah.', voiceStyle: 'weary',
+      quote: ['Blah, blah, blah.| Blah, blah, blah.',
+              'Net zero by twenty fifty.| Blah, blah, blah.',
+              'Green economy.| Blah, blah, blah.'], voiceStyle: 'weary',
       spawns: [
         { f: 14, kind: 'word', x: 60, y: 140, vx: 6.5, w: 56, h: 34, damage: 26, chip: 4,
           hitstun: 12, blockstun: 8, hitstop: 5, push: { x: 3 }, stun: 8,
@@ -254,7 +270,8 @@ const greta = finalise({
       push: { x: 4, y: 15 }, knockdown: true, invuln: 8,
       curve: [{ f: 0, vx: 2.6, vy: 16.5 }],
       boxes: [box(5, 14, 20, 84, 86, 128)],
-      quote: 'Shame.| On.| You!', voiceStyle: 'rage',
+      quote: ['Shame.| On.| You!', 'We will never forgive you!',
+              'Our house| is on fire!'], voiceStyle: 'rage',
     }),
 
     schoolstrike: move({
@@ -265,7 +282,8 @@ const greta = finalise({
       push: { x: 9 }, hitType: HIT.LOW, keepMomentum: true,
       curve: [{ f: 0, vx: 15 }, { f: 18, vx: 3 }],
       boxes: [box(9, 24, 20, 4, 118, 74)],
-      quote: 'Skolstrejk| för klimatet!', voiceStyle: 'rage',
+      quote: ['Skolstrejk| för klimatet!', 'I want you| to panic!',
+              'Listen| to the science!'], voiceStyle: 'rage',
     }),
 
     climatestrike: move({
@@ -273,7 +291,9 @@ const greta = finalise({
       input: { motion: 'qcfx2', button: IN.LP | IN.HP | IN.SUPER },
       meterCost: 1000, freeze: 38,
       startup: 10, active: 52, recovery: 36,
-      quote: 'We will not let you get away with this.| Right here,| right now| is where we draw the line.',
+      quote: ['We will not let you get away with this.| Right here,| right now| is where we draw the line.',
+              'The eyes of all future generations| are upon you!',
+              'We will never| forgive you!'],
       voiceStyle: 'rage',
       spawns: [
         { f: 12, kind: 'crowd', x: 0, y: 82, vx: 9.5, w: 130, h: 168,
@@ -317,6 +337,9 @@ const kim = finalise({
     build: 'heavy', height: 0.98,
     aura: '#ff5468', props: ['medals'],
   },
+  trophy: { kind: 'prop', label: 'THE MEDALS', color: '#ffc64d' },
+  fatalityLine: ['Your organs| are now state property.',
+                 'The autopsy| will be glorious.'],
   taunts: ['The Supreme Leader is pleased.', 'This is a peaceful test.', 'Rocket man?'],
   winQuotes: ['The revolution is glorious and so am I.',
               'Our scientists will study your defeat for decades.'],
@@ -336,7 +359,8 @@ const kim = finalise({
       input: { motion: 'qcf', button: IN.LP | IN.HP },
       startup: 15, active: 3, recovery: 30,
       cancel: ['super'],
-      quote: 'A routine scientific test.',
+      quote: ['A routine scientific test.', 'A peaceful satellite launch.',
+              'Purely defensive. Obviously.'],
       spawns: [{
         f: 15, kind: 'missile', x: 60, y: 130, vx: 8.5, vy: 9, grav: -0.42,
         w: 60, h: 40, damage: 55, chip: 9, hitstun: 18, blockstun: 12, hitstop: 9,
@@ -354,7 +378,9 @@ const kim = finalise({
       push: { x: 12, y: 8 }, hitType: HIT.MID, knockdown: true,
       armor: { hits: 1, frames: 22 },
       boxes: [box(16, 23, -60, 0, 240, 190)],
-      quote: 'My button is bigger. And it works.',
+      quote: ['My button is bigger.| And it works.',
+              'The nuclear button is on my desk| at all times.',
+              'A sea of fire| awaits.'],
       sfx: 'explosion',
     }),
 
@@ -366,7 +392,7 @@ const kim = finalise({
       push: { x: 5, y: 15 }, knockdown: true, invuln: 8,
       curve: [{ f: 0, vx: 2.8, vy: 16.8 }],
       boxes: [box(5, 15, 22, 86, 92, 132)],
-      quote: 'Glory!',
+      quote: ['Glory!', 'For the eternal leadership!', 'Rise!'],
     }),
 
     parade: move({
@@ -378,7 +404,8 @@ const kim = finalise({
       armor: { hits: 2, frames: 34 },
       curve: [{ f: 0, vx: 11 }, { f: 24, vx: 2 }],
       boxes: [box(12, 31, 22, 10, 124, 156)],
-      quote: 'Forward, always forward!',
+      quote: ['Forward, always forward!', 'The parade does not stop.',
+              'Ten million strong| behind me.'],
     }),
 
     nucleartest: move({
@@ -389,7 +416,9 @@ const kim = finalise({
       damage: 300, chip: 40, stun: 60, hitstun: 40, blockstun: 24, hitstop: 24,
       push: { x: 16, y: 18 }, knockdown: true, breakArmor: true,
       boxes: [box(24, 44, -300, 0, 700, 420)],
-      quote: 'Behold the treasured sword!',
+      quote: ['Behold| the treasured sword!',
+              'The dotard| will be tamed with fire.',
+              'We will reduce you| to ashes.'],
       sfx: 'explosion',
       spawns: [{
         f: 22, kind: 'nuke', x: 0, y: 60, vx: 0, vy: 0, w: 10, h: 10,
@@ -423,6 +452,8 @@ const putin = finalise({
     build: 'stocky', height: 0.94,
     aura: '#8fd0ff', props: [],
   },
+  trophy: { kind: 'organ', label: 'THE SPINE', color: '#e8e2d4' },
+  fatalityLine: ['A tragic accident.| Obviously.', 'He fell.| Out of a window.'],
   taunts: ['There is no war.', 'It is a special operation.', 'Judo is about balance.'],
   winQuotes: ['The operation concluded ahead of schedule.',
               'Everything went according to the plan. There was always a plan.'],
@@ -445,7 +476,8 @@ const putin = finalise({
       damage: 158, stun: 30, hitstun: 38, hitstop: 17,
       push: { x: 13, y: 15 }, hitType: HIT.THROW, knockdown: true,
       boxes: [box(7, 9, 12, 26, 106, 152)],
-      quote: 'Balance. It is all balance.',
+      quote: ['Balance.| It is all balance.', 'Judo teaches patience.',
+              'Ippon. The match is over.'],
     }),
 
     gascutoff: move({
@@ -453,7 +485,9 @@ const putin = finalise({
       input: { motion: 'qcb', button: IN.LP | IN.HP },
       startup: 13, active: 3, recovery: 28,
       cancel: ['super'],
-      quote: 'The pipeline is closed for maintenance.',
+      quote: ['The pipeline is closed| for maintenance.',
+              'Europe will be cold this winter.',
+              'A purely technical problem.'],
       spawns: [{
         f: 13, kind: 'frost', x: 66, y: 90, vx: 9, w: 84, h: 96,
         damage: 58, chip: 9, hitstun: 30, blockstun: 16, hitstop: 10,
@@ -471,7 +505,9 @@ const putin = finalise({
       armor: { hits: 2, frames: 30 },
       curve: [{ f: 0, vx: 13.5 }, { f: 18, vx: 2 }],
       boxes: [box(8, 21, 20, 20, 128, 150)],
-      quote: 'The bear does not ask permission.',
+      quote: ['The bear does not ask permission.',
+              'Russia has no borders,| only interests.',
+              'We have not even started| in earnest.'],
     }),
 
     polonium: move({
@@ -479,7 +515,8 @@ const putin = finalise({
       input: { motion: 'qcf', button: IN.LK | IN.HK },
       startup: 10, active: 2, recovery: 22,
       cancel: ['super'],
-      quote: 'A tragic accident, obviously.',
+      quote: ['A tragic accident. Obviously.', 'He must have poisoned himself.',
+              'We have no knowledge of this person.'],
       spawns: [{
         f: 10, kind: 'dart', x: 64, y: 120, vx: 16, w: 46, h: 20,
         damage: 42, chip: 6, hitstun: 14, blockstun: 9, hitstop: 6,
@@ -494,7 +531,9 @@ const putin = finalise({
       startup: 8, active: 44, recovery: 40,
       damage: 0, keepMomentum: true,
       curve: [{ f: 0, vx: 13 }, { f: 40, vx: 0 }],
-      quote: 'Three days. It will take three days.',
+      quote: ['Three days.| It will take three days.',
+              'This is not a war.| It is a special operation.',
+              'Whether you like it or not,| my beauty,| you will put up with it.'],
       boxes: [
         box(10, 13, 24, 40, 118, 130, { damage: 40, hitstun: 16, hitstop: 6, push: { x: 2, y: 3 } }),
         box(16, 19, 24, 60, 118, 130, { damage: 40, hitstun: 16, hitstop: 6, push: { x: 2, y: 3 } }),
@@ -534,6 +573,9 @@ const macron = finalise({
     build: 'lean', height: 1.0,
     aura: '#4da3ff', props: [],
   },
+  trophy: { kind: 'organ', label: 'THE HEART', color: '#a8121f' },
+  fatalityLine: ['En même temps,| you are dead| and it is reform.',
+                 'This was necessary.| History will thank me.'],
   taunts: ['Traversez la rue.', 'En même temps…', 'Il faut être pragmatique.'],
   winQuotes: ['I hear your anger, and I have decided anyway.',
               'This reform was necessary. History will thank me.'],
@@ -556,7 +598,9 @@ const macron = finalise({
       push: { x: 10, y: 9 }, knockdown: true,
       invuln: 18,
       boxes: [box(14, 22, 26, 30, 108, 140)],
-      quote: 'En même temps, you are also wrong.',
+      quote: ['En même temps,| you are also wrong.',
+              'I hear you,| and I disagree.',
+              'Both things are true| at the same time.'],
       sfx: 'parry',
     }),
 
@@ -568,7 +612,9 @@ const macron = finalise({
       push: { x: 8, y: 4 }, hitType: HIT.OVERHEAD, knockdown: true,
       armor: { hits: 1, frames: 24 },
       boxes: [box(20, 23, 26, 0, 116, 176)],
-      quote: 'No vote. It passes anyway.',
+      quote: ['No vote.| It passes anyway.',
+              'Article forty nine| point three.',
+              'It is not the street| that governs.'],
       sfx: 'gavel',
     }),
 
@@ -580,7 +626,9 @@ const macron = finalise({
       push: { x: 4, y: 16 }, knockdown: true, invuln: 9,
       curve: [{ f: 0, vx: 3.2, vy: 17.2 }],
       boxes: [box(4, 14, 22, 86, 90, 134)],
-      quote: 'Jupiter descends only to strike.',
+      quote: ['Jupiter descends| only to strike.',
+              'There are those who succeed| and those who are nothing.',
+              'I have a very strong desire| to annoy them.'],
     }),
 
     pension: move({
@@ -588,7 +636,8 @@ const macron = finalise({
       input: { motion: 'qcf', button: IN.LK | IN.HK },
       startup: 16, active: 3, recovery: 28,
       cancel: ['super'],
-      quote: 'Two more years. Only two.',
+      quote: ['Two more years.| Only two.', 'Sixty four. It is not negotiable.',
+              'Cross the street,| I will find you a job.'],
       spawns: [{
         f: 16, kind: 'reform', x: 64, y: 84, vx: 5.2, w: 74, h: 150,
         damage: 20, chip: 4, hitstun: 11, blockstun: 8, hitstop: 4,
@@ -603,7 +652,9 @@ const macron = finalise({
       meterCost: 1000, freeze: 38,
       startup: 14, active: 34, recovery: 40,
       damage: 0,
-      quote: 'I am not accountable to you. I am accountable to history.',
+      quote: ['I am not accountable to you.| I am accountable to history.',
+              'The French are Gauls| resistant to change.',
+              'A crazy amount of money.'],
       spawns: [
         { f: 16, kind: 'bolt', x: 180, y: 420, vx: 0, vy: -22, w: 58, h: 200,
           damage: 70, chip: 12, hitstun: 18, blockstun: 12, hitstop: 8,
@@ -644,6 +695,9 @@ const musk = finalise({
     build: 'lean', height: 1.02,
     aura: '#8f8fff', props: ['xbadge'],
   },
+  trophy: { kind: 'prop', label: 'THE X BADGE', color: '#8f8fff' },
+  fatalityLine: ['Concerning.', 'Rapid| unscheduled| disassembly.',
+                 'This feature| shipped early.'],
   taunts: ['Concerning.', 'Interesting…', 'We are shipping it tonight.'],
   winQuotes: ['Funding secured.', 'That was technically a beta test.'],
   moves: {
@@ -662,7 +716,8 @@ const musk = finalise({
       input: { motion: 'qcf', button: IN.LP | IN.HP },
       startup: 9, active: 3, recovery: 26,
       cancel: ['super'],
-      quote: 'Posting through it.',
+      quote: ['Posting through it.', 'Concerning.', 'Interesting…',
+              'Comedy is now legal here.'],
       spawns: [
         { f: 9, kind: 'tweet', x: 60, y: 132, vx: 13, w: 44, h: 32, damage: 30, chip: 5,
           hitstun: 12, blockstun: 8, hitstop: 5, push: { x: 3 }, stun: 6, life: 80,
@@ -685,7 +740,8 @@ const musk = finalise({
       armor: { hits: 2, frames: 32 },
       curve: [{ f: 0, vx: 12.5 }, { f: 22, vx: 2 }],
       boxes: [box(13, 30, 22, 8, 140, 132)],
-      quote: 'The glass is armoured. Watch.',
+      quote: ['The glass is armoured.| Watch this.', 'Let that| sink in.',
+              'It is bulletproof. Mostly.'],
     }),
 
     falconboost: move({
@@ -696,7 +752,8 @@ const musk = finalise({
       push: { x: 4, y: 15 }, knockdown: true, invuln: 7,
       curve: [{ f: 0, vx: 3.6, vy: 18.5 }],
       boxes: [box(5, 16, 20, 80, 88, 140)],
-      quote: 'Full thrust.',
+      quote: ['Full thrust.', 'To Mars!', 'Nominal trajectory.',
+              'Rapid unscheduled disassembly.'],
       sfx: 'missile',
     }),
 
@@ -706,7 +763,8 @@ const musk = finalise({
       startup: 6, active: 1, recovery: 16,
       damage: 0, invuln: 16, keepMomentum: true,
       curve: [{ f: 0, vx: -17 }, { f: 10, vx: 0 }],
-      quote: 'It is called X now.',
+      quote: ['It is called X now.', 'Rebranded.| Deal with it.',
+              'Funding secured.'],
       sfx: 'freeze',
     }),
 
@@ -716,7 +774,8 @@ const musk = finalise({
       meterCost: 1000, freeze: 38,
       startup: 8, active: 40, recovery: 42,
       damage: 0,
-      quote: 'We are making life multiplanetary. You are not invited.',
+      quote: ['We are making life multiplanetary.| You are not invited.',
+              'Occupy Mars.', 'We will coup whoever we want.| Deal with it.'],
       boxes: [
         box(10, 16, 20, 20, 116, 150, {
           damage: 90, hitstun: 30, hitstop: 14, push: { x: 2, y: 22 },
@@ -764,6 +823,9 @@ const milei = finalise({
     build: 'lean', height: 1.0,
     aura: '#ffa23d', props: ['chainsaw'],
   },
+  trophy: { kind: 'prop', label: 'THE CHAINSAW', color: '#ff7a18' },
+  fatalityLine: [{ text: 'Afuera!| Afuera!| AFUERA!', style: 'rage' },
+                 { text: 'The organ market| is now free!', style: 'rage' }],
   taunts: ['¡No hay plata!', '¡Afuera!', '¡Viva la libertad, carajo!'],
   winQuotes: ['The state was the problem. You were the state.',
               '¡Afuera! Next.'],
@@ -791,7 +853,8 @@ const milei = finalise({
           damage: 62, hitstun: 22, hitstop: 12, push: { x: 12, y: 6 }, knockdown: true,
         }),
       ],
-      quote: 'Afuera!| Afuera!| Afuera!', voiceStyle: 'rage',
+      quote: ['Afuera!| Afuera!| Afuera!', 'The state| is the enemy!',
+              'Zurdos!| Get out!', 'Taxation| is theft!'], voiceStyle: 'rage',
       sfx: 'chainsaw',
     }),
 
@@ -800,7 +863,8 @@ const milei = finalise({
       input: { motion: 'qcb', button: IN.LP | IN.HP },
       startup: 12, active: 3, recovery: 26,
       cancel: ['super'],
-      quote: 'It is worth less already.',
+      quote: ['It is worth less already.', 'No hay plata!',
+              'The peso is a scam| perpetrated by the caste.'],
       spawns: [{
         f: 12, kind: 'peso', x: 62, y: 150, vx: 8, vy: 5, grav: -0.34,
         w: 62, h: 46, damage: 66, chip: 10, hitstun: 18, blockstun: 12, hitstop: 9,
@@ -817,7 +881,8 @@ const milei = finalise({
       push: { x: 4, y: 15 }, knockdown: true, invuln: 8,
       curve: [{ f: 0, vx: 3.2, vy: 17 }],
       boxes: [box(5, 16, 22, 84, 92, 136)],
-      quote: 'Viva la libertad,| carajo!', voiceStyle: 'rage',
+      quote: ['Viva la libertad,| carajo!', 'I came to awaken lions!',
+              'Long live freedom!'], voiceStyle: 'rage',
       sfx: 'chainsaw',
     }),
 
@@ -846,7 +911,8 @@ const milei = finalise({
       damage: 30, chip: 5, stun: 8, hitstun: 12, blockstun: 7, hitstop: 4,
       push: { x: 2 }, keepMomentum: true,
       curve: [{ f: 0, vx: 8 }, { f: 44, vx: 0 }],
-      quote: 'No hay plata!| Afuera| todos!', voiceStyle: 'rage',
+      quote: ['No hay plata!| Afuera| todos!', 'Shock therapy!| No gradualism!',
+              'The West| is in danger!'], voiceStyle: 'rage',
       boxes: [
         box(10, 12, 30, 40, 130, 130), box(15, 17, 30, 40, 130, 130),
         box(20, 22, 30, 40, 130, 130), box(25, 27, 30, 40, 130, 130),
@@ -884,6 +950,9 @@ const schwab = finalise({
     build: 'stocky', height: 0.99,
     aura: '#b98fff', props: ['glasses', 'lanyard'],
   },
+  trophy: { kind: 'prop', label: 'THE LANYARD', color: '#4da3ff' },
+  fatalityLine: ['You will own nothing.| Starting with this.',
+                 'And you| will be happy.'],
   taunts: ['Welcome to Davos.', 'You will own nothing.', 'The stakeholders have decided.'],
   winQuotes: ['You will own nothing, and you will be happy.',
               'The Great Reset requires sacrifices. Yours.'],
@@ -903,7 +972,9 @@ const schwab = finalise({
       input: { motion: 'qcf', button: IN.LP | IN.HP },
       startup: 14, active: 3, recovery: 28,
       cancel: ['super'],
-      quote: 'You will own nothing, and you will be happy.',
+      quote: ['You will own nothing,| and you will be happy.',
+              'By twenty thirty| you will own nothing.',
+              'Ownership is| an outdated concept.'],
       spawns: [{
         f: 14, kind: 'drain', x: 66, y: 108, vx: 9.5, w: 66, h: 60,
         damage: 58, chip: 9, hitstun: 18, blockstun: 12, hitstop: 9,
@@ -920,7 +991,9 @@ const schwab = finalise({
       push: { x: 15, y: 4 }, hitType: HIT.MID,
       invuln: 14,
       boxes: [box(16, 25, -110, 0, 320, 200)],
-      quote: 'We reset. Everyone starts again — except me.',
+      quote: ['We reset.| Everyone starts again.| Except me.',
+              'The Great Reset| begins now.',
+              'A window of opportunity.'],
       sfx: 'riser',
     }),
 
@@ -932,7 +1005,8 @@ const schwab = finalise({
       push: { x: 5, y: 15 }, knockdown: true, invuln: 8,
       curve: [{ f: 0, vx: 3, vy: 16.8 }],
       boxes: [box(5, 15, 22, 86, 92, 132)],
-      quote: 'All stakeholders, aligned.',
+      quote: ['All stakeholders,| aligned.', 'We penetrate the cabinets.',
+              'Stakeholder capitalism| in action.'],
     }),
 
     vortex: move({
@@ -940,7 +1014,9 @@ const schwab = finalise({
       input: { motion: 'qcf', button: IN.LK | IN.HK },
       startup: 15, active: 3, recovery: 30,
       cancel: ['super'],
-      quote: 'Come to the table. You have no choice.',
+      quote: ['Come to the table.| You have no choice.',
+              'Resistance is| a coordination problem.',
+              'The forum decides.'],
       spawns: [{
         f: 15, kind: 'vortex', x: 150, y: 96, vx: 3.5, w: 96, h: 130,
         damage: 18, chip: 3, hitstun: 9, blockstun: 6, hitstop: 3,
@@ -954,7 +1030,9 @@ const schwab = finalise({
       input: { motion: 'qcfx2', button: IN.LP | IN.HP | IN.SUPER },
       meterCost: 1000, freeze: 38,
       startup: 12, active: 46, recovery: 42,
-      quote: 'The Fourth Industrial Revolution will change everything about you.',
+      quote: ['The Fourth Industrial Revolution| will change everything about you.',
+              'It will change| what you are.',
+              'The future| is built by us.'],
       spawns: [
         { f: 14, kind: 'drone', x: 40, y: 260, vx: 12, vy: -0.6, w: 60, h: 40,
           damage: 44, chip: 7, hitstun: 14, blockstun: 9, hitstop: 5, push: { x: 3, y: 4 },

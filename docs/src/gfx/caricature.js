@@ -73,6 +73,22 @@ export function animOf(mv) {
    Pose builder — returns joint targets in local space.
    `t` is a 0..1 progress through the current action where relevant.
    ══════════════════════════════════════════════════════════════ */
+/**
+ * How beaten up this fighter looks, 0..1.
+ * Presentation only — it reads health, never writes anything.
+ */
+function wearOf(f) {
+  if (!f || !f.maxHealth) return 0;
+  const left = Math.max(0, f.health) / f.maxHealth;
+  return Math.min(1, Math.max(0, 1 - left));
+}
+
+/** A stable per-fighter scatter, so damage doesn't crawl around the body. */
+function scatter(seed, i) {
+  const n = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453;
+  return n - Math.floor(n);
+}
+
 function buildPose(f, char, mv, clock) {
   const h = char.look.height ?? 1;
   const build = char.look.build ?? 'lean';
@@ -97,13 +113,20 @@ function buildPose(f, char, mv, clock) {
     case S.IDLE:
     case S.INTRO:
     case S.ROUND_FREEZE: {
-      p.hipY += bob;
-      p.headY += bob * 1.2;
+      // Breathing gets deeper and faster as they tire — the shoulders start
+      // heaving and the mouth falls open. It's the cheapest way to show a
+      // fighter is in trouble, and you read it instantly.
+      const wear = wearOf(f);
+      const rate = 0.09 + wear * 0.07;
+      const breath = Math.sin(clock * rate) * 2.2 * (1 + wear * 2.6);
+      p.hipY += breath * 0.45;
+      p.headY += breath * 1.2;
       p.headX = sway * 0.6;
-      p.handR = { x: 30 + sway, y: (114 + bob) * h };
-      p.handL = { x: 2 - sway, y: (104 + bob) * h };
-      p.lean = 0.04;
-      p.brow = 0.4;
+      p.handR = { x: 30 + sway, y: (114 + breath) * h - wear * 12 };
+      p.handL = { x: 2 - sway, y: (104 + breath) * h - wear * 10 };
+      p.lean = 0.04 + wear * 0.1;
+      p.brow = 0.4 + wear * 0.6;
+      p.open = wear > 0.45 ? 0.25 + Math.max(0, Math.sin(clock * rate)) * 0.5 * wear : 0;
       break;
     }
 
@@ -411,6 +434,8 @@ function poseAttack(p, f, mv, h, air = false) {
 export function drawFighter(ctx, f, char, mv, clock, opts = {}) {
   const look = char.look;
   const pose = buildPose(f, char, mv, clock + f.id * 37);
+  const wear = opts.silhouette ? 0 : wearOf(f);
+  const seed = (f.id ?? 0) * 37 + 11;
 
   ctx.save();
   ctx.translate(f.x, -f.y);
@@ -468,13 +493,13 @@ export function drawFighter(ctx, f, char, mv, clock, opts = {}) {
            col(shade(look.suit, -26)), 12 * pose.bulk, col(shade(look.skin, -12)), true);
 
   /* — Torso — */
-  drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts);
+  drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts, wear, seed);
 
   /* — Head — */
   ctx.save();
   ctx.translate(headP.x, headP.y);
   ctx.rotate(lean * 0.5 + pose.headRot);
-  drawHead(ctx, look, pose, col, opts, clock, char);
+  drawHead(ctx, look, pose, col, opts, clock, char, wear, seed);
   ctx.restore();
 
   /* — Front arm (over the torso) — */
@@ -515,7 +540,7 @@ function drawLimb(ctx, ax, ay, bx, by, l1, l2, flip, color, w, capColor, isArm =
   ctx.fill();
 }
 
-function drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts) {
+function drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts, wear = 0, seed = 0) {
   const b = pose.bulk;
   ctx.save();
   ctx.translate(0, hipY);
@@ -584,6 +609,37 @@ function drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts) {
       ctx.fill();
     }
 
+    /* — Damage: the suit goes first — */
+    if (wear > 0.18) {
+      ctx.fillStyle = '#0a0c10';
+      const rips = Math.round(wear * 5);
+      for (let i = 0; i < rips; i++) {
+        const rx = (scatter(seed, i) - 0.5) * botW * 2;
+        const rw = 3 + scatter(seed, i + 40) * 5 * wear;
+        const rh = 6 + scatter(seed, i + 80) * 16 * wear;
+        ctx.beginPath();
+        ctx.moveTo(rx, hipY + 4);
+        ctx.lineTo(rx + rw, hipY + 4);
+        ctx.lineTo(rx + rw * 0.4, hipY + 4 - rh);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    if (wear > 0.3) {
+      ctx.globalAlpha *= 0.85;
+      const spots = Math.round((wear - 0.2) * 9);
+      for (let i = 0; i < spots; i++) {
+        const sx = (scatter(seed, i + 7) - 0.5) * topW * 1.8;
+        const sy = chest + 6 + scatter(seed, i + 17) * 46;
+        const rr = 2 + scatter(seed, i + 27) * 6 * wear;
+        ctx.fillStyle = i % 3 === 0 ? '#8e0f1a' : '#5e0a12';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, rr, rr * 0.78, 0, 0, TAU);
+        ctx.fill();
+      }
+      ctx.globalAlpha /= 0.85;
+    }
+
     if (look.props?.includes('medals')) {
       for (let i = 0; i < 3; i++) {
         ctx.fillStyle = ['#ffc64d', '#ff5468', '#8fd0ff'][i];
@@ -616,7 +672,7 @@ function drawTorso(ctx, hipY, shoulderY, lean, look, pose, col, opts) {
 }
 
 /* ── Head: skull, features, then hair on top ── */
-function drawHead(ctx, look, pose, col, opts, clock, char) {
+function drawHead(ctx, look, pose, col, opts, clock, char, wear = 0, seed = 0) {
   const r = 27 * (look.headScale ?? 1);
 
   // Skull
@@ -707,10 +763,55 @@ function drawHead(ctx, look, pose, col, opts, clock, char) {
     ctx.stroke();
   }
 
-  drawHair(ctx, look, r, col, clock);
+  drawHair(ctx, look, r, col, clock, wear);
+
+  /* — Damage on the face, drawn last so it sits over everything — */
+  if (wear > 0.15) {
+    ctx.globalAlpha *= 0.55;
+    const bruises = Math.round(wear * 4);
+    for (let i = 0; i < bruises; i++) {
+      const bx = -10 + scatter(seed, i + 3) * 24;
+      const by = -8 + scatter(seed, i + 13) * 26;
+      const br = 3 + scatter(seed, i + 23) * 6 * wear;
+      ctx.fillStyle = i % 2 ? '#5c2a5e' : '#7a2a30';
+      ctx.beginPath();
+      ctx.ellipse(bx, by, br, br * 0.8, 0, 0, TAU);
+      ctx.fill();
+    }
+    ctx.globalAlpha /= 0.55;
+  }
+  if (wear > 0.35) {
+    // A cut over the brow, and what runs from it.
+    ctx.strokeStyle = '#8e0f1a';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(6, -13); ctx.lineTo(13, -9);
+    ctx.stroke();
+    ctx.fillStyle = '#a8121f';
+    ctx.beginPath();
+    ctx.moveTo(11, -10);
+    ctx.lineTo(13.4, -10);
+    ctx.lineTo(13.6, -2 + wear * 16);
+    ctx.lineTo(10.4, -2 + wear * 14);
+    ctx.closePath();
+    ctx.fill();
+  }
+  if (wear > 0.55) {
+    // Bloody nose and a swelling eye.
+    ctx.fillStyle = '#a8121f';
+    ctx.beginPath();
+    ctx.moveTo(7.5, 7); ctx.lineTo(10, 7);
+    ctx.lineTo(9.6, 7 + wear * 10); ctx.lineTo(7.8, 7 + wear * 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = shade(look.skin, -26);
+    ctx.beginPath();
+    ctx.ellipse(-6, -3, 5.4, 2.6 + wear * 1.4, 0, 0, TAU);
+    ctx.fill();
+  }
 }
 
-function drawHair(ctx, look, r, col, clock) {
+function drawHair(ctx, look, r, col, clock, wear = 0) {
   const c = col(look.hair);
   ctx.fillStyle = c;
   switch (look.hairStyle) {

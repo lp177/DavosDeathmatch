@@ -82,7 +82,7 @@ export class Camera {
    * @param {number} dt   frames elapsed (1 at 60fps)
    * @param {object} focus {x, y, spread} world-space framing target
    */
-  update(dt, focus) {
+  update(dt, focus, dtReal = dt) {
     /* — Framing — */
     if (focus) {
       const spread = focus.spread ?? 0;
@@ -118,11 +118,15 @@ export class Camera {
     this.impulseX *= Math.pow(0.8, dt);
     this.impulseY *= Math.pow(0.8, dt);
 
-    /* — Slow motion — */
+    /* — Slow motion —
+       Counted in REAL time, not slowed time. Using the scaled dt here means
+       the countdown itself runs slow, so a 110-frame slow-mo at 0.16 speed
+       takes eleven seconds of wall clock instead of two — the whole end of a
+       match crawls, and it looks like the game has hung. */
     if (this.slowmoLeft > 0) {
-      this.slowmoLeft -= dt;
+      this.slowmoLeft -= dtReal;
       if (this.slowmoLeft <= 0) this.slowmo = 1;
-      else this.slowmo += (1 - this.slowmo) * 0.008 * dt;   // gently recover
+      else this.slowmo += (1 - this.slowmo) * 0.008 * dtReal;   // gently recover
     }
 
     /* — Keep the view inside the stage — */

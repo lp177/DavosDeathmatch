@@ -292,6 +292,16 @@ export function buildSettings() {
       toggle('Film grain', 'Subtle noise over the whole frame', 'video.grain'),
     );
     v.appendChild(vg2);
+    const vg25 = group('Violence');
+    vg25.append(
+      slider('Blood', 'video.blood', { min: 0, max: 1.5, step: 0.05 }),
+      toggle('Fatalities', 'Finishing move on the final knockout', 'video.fatalities'),
+      el('p', 'card__hint',
+        'Set blood to zero for a bloodless fight. Fatalities can be turned off '
+        + 'separately — the match simply ends at the knockout.'),
+    );
+    v.appendChild(vg25);
+
     const vg3 = group('Accessibility');
     vg3.append(
       selectRow('Motion', 'video.motion', [

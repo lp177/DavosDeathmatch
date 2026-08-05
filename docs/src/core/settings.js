@@ -25,6 +25,8 @@ export const DEFAULTS = {
     speedLines: true,
     grain: true,
     afterimages: true,
+    blood: 1.0,          // 0 = none, 1 = normal, 1.5 = Mortal-Kombat-grade
+    fatalities: true,    // finisher on the last knockout
     showFps: false,
     showHitboxes: false,
     motion: 'auto',      // 'auto' | 'full' | 'reduced'
@@ -165,6 +167,10 @@ class Settings {
       grain:      r ? false : v.grain,
       afterimages: r ? false : v.afterimages,
       zoom:       r ? 0.15 : 1,
+      // Blood is content, not motion — reduced motion shouldn't silently
+      // censor it, only calm the way it moves.
+      blood:      v.blood,
+      fatalities: v.fatalities,
     };
   }
 

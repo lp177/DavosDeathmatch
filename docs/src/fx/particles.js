@@ -60,6 +60,7 @@ export class Particles {
     p.fade = cfg.fade ?? 'out';
     p.grow = cfg.grow ?? 0;
     p.layer = cfg.layer ?? 0;      // <0 behind fighters, >0 in front
+    p.ground = cfg.ground ?? false;
     return p;
   }
 
@@ -77,6 +78,18 @@ export class Particles {
       p.y += p.vy * dt;
       p.rot += p.spin * dt;
       if (p.grow) p.size = p.size0 * (1 + p.grow * (1 - p.life / p.maxLife));
+      // Blood that reaches the floor stops there and dries.
+      if (p.ground && p.y <= 0) {
+        p.y = 0; p.vx = 0; p.vy = 0; p.grav = 0; p.ground = false;
+        p.kind = 'splat';
+        p.layer = -1;
+        p.size *= 1.6 + Math.random();
+        p.life = Math.min(p.life + 260, 900);
+        p.maxLife = p.life;
+        p.rot = Math.random() * 6.28;
+        p.color = '#6d0d16';
+        continue;
+      }
       // Ground bounce for debris.
       if (p.kind === 'debris' && p.y < 0) {
         p.y = 0;
@@ -249,6 +262,69 @@ export class Particles {
     }
   }
 
+  /* ── Gore ─────────────────────────────────────────────── */
+
+  /** Arterial spray from a hit, plus what lands on the floor. */
+  blood(x, y, dir, power = 1) {
+    const amt = settings.juice.blood;
+    if (amt <= 0) return;
+    const n = Math.round(7 * power * amt * settings.juice.particles);
+    for (let i = 0; i < n; i++) {
+      const a = (Math.random() * 1.7 - 0.85) + (dir > 0 ? 0 : Math.PI);
+      const sp = (2.5 + Math.random() * 9) * power;
+      this.spawn({
+        kind: 'blood', x, y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp + 3,
+        grav: -0.55, drag: 0.99,
+        life: 26 + Math.random() * 30,
+        size: 2.5 + Math.random() * 5 * power,
+        color: i % 5 === 0 ? '#ff4d5e' : '#a8121f',
+        layer: 1, ground: true,
+      });
+    }
+    // A finer mist that hangs for a moment.
+    for (let i = 0; i < Math.round(4 * power * amt); i++) {
+      this.spawn({
+        kind: 'ember', x, y,
+        vx: (Math.random() - 0.5) * 6 * power, vy: Math.random() * 4,
+        grav: -0.12, drag: 0.9, life: 14 + Math.random() * 12,
+        size: 1.5 + Math.random() * 2.5, color: '#8e0f1a', layer: 1,
+      });
+    }
+  }
+
+  /** A stain left on the floor. Lasts the round; purely atmospheric. */
+  splat(x, size = 1) {
+    const amt = settings.juice.blood;
+    if (amt <= 0) return;
+    this.spawn({
+      kind: 'splat', x, y: 0,
+      life: 900, size: (10 + Math.random() * 14) * size,
+      color: '#6d0d16', layer: -1, fade: 'none',
+      rot: Math.random() * 6.28,
+    });
+  }
+
+  /** The big one: a fountain, for fatalities. */
+  gush(x, y, power = 1) {
+    const amt = settings.juice.blood;
+    if (amt <= 0) return;
+    const n = Math.round(34 * power * amt * settings.juice.particles);
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.5;
+      const sp = 6 + Math.random() * 16 * power;
+      this.spawn({
+        kind: 'blood', x: x + (Math.random() - 0.5) * 24, y,
+        vx: -Math.cos(a) * sp * 0.5, vy: -Math.sin(a) * sp,
+        grav: -0.6, drag: 0.99,
+        life: 40 + Math.random() * 50,
+        size: 3 + Math.random() * 7 * power,
+        color: i % 4 === 0 ? '#ff4d5e' : '#a8121f',
+        layer: 1, ground: true,
+      });
+    }
+  }
+
   confetti(x, y, n = 40) {
     const d = settings.juice.particles;
     const colors = ['#ffc64d', '#4da3ff', '#ff6b8a', '#7ee787', '#ffffff'];
@@ -406,6 +482,53 @@ const DRAW = {
     ctx.shadowColor = p.color;
     ctx.shadowBlur = 10;
     ctx.fillText(p.text, 0, 0);
+    ctx.restore();
+  },
+
+  blood(ctx, p) {
+    // Stretched along its own velocity, so a spray reads as motion.
+    const len = p.size * (1 + Math.min(2.4, Math.hypot(p.vx, p.vy) * 0.18));
+    const a = Math.atan2(p.vy, p.vx);
+    ctx.save();
+    ctx.translate(p.x, -p.y);
+    ctx.rotate(-a);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, len / 2, p.size / 2, 0, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  },
+
+  splat(ctx, p, t) {
+    ctx.save();
+    ctx.translate(p.x, -p.y);
+    ctx.rotate(p.rot);
+    ctx.globalAlpha *= Math.min(1, t * 3);   // fade only at the very end
+    ctx.fillStyle = p.color;
+    // An irregular blob rather than an ellipse: identical ovals in a row
+    // read as decoration, which is the opposite of what a stain should do.
+    // The lobe pattern comes from the particle's own rotation, so each
+    // stain keeps its shape for life instead of boiling.
+    const r = p.size * 0.62;
+    ctx.beginPath();
+    for (let i = 0; i <= 10; i++) {
+      const a = (i / 10) * TAU;
+      const wob = 0.62 + 0.38 * Math.abs(Math.sin(a * 2.3 + p.rot * 3));
+      const rad = r * wob * (1 + 0.5 * Math.cos(a));
+      const x = Math.cos(a) * rad, y = Math.sin(a) * rad * 0.72;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fill();
+    // Two spatter droplets flung clear of the main pool.
+    for (let i = 0; i < 2; i++) {
+      const a = p.rot * 2 + i * 2.4;
+      const d = r * (1.3 + i * 0.5);
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * d, Math.sin(a) * d * 0.6,
+                  r * 0.2, r * 0.14, a, 0, TAU);
+      ctx.fill();
+    }
     ctx.restore();
   },
 

@@ -242,6 +242,14 @@ export class Match {
     if (this.phaseFrame === 30) {
       this.emit({ type: 'announce', text: roundName(this.round), big: false });
     }
+    // Pre-fight trash talk, first round only — one line each, taking turns.
+    // Derived from the seed rather than the RNG so it costs no simulation
+    // state and can't drift across a rollback.
+    if (this.round === 1) {
+      const first = this.cfg.seed & 1;
+      if (this.phaseFrame === 62) this.emit({ type: 'trashTalk', fighter: first });
+      if (this.phaseFrame === 112) this.emit({ type: 'trashTalk', fighter: 1 - first });
+    }
     if (done) {
       this.phase = 'fight';
       this.phaseFrame = 0;
@@ -755,6 +763,13 @@ export class Match {
 
     if (def.stun >= DIZZY_THRESHOLD && !isAirborne(def) && def.health > 0) {
       this.emit({ type: 'dizzyIncoming', fighter: def.id });
+    }
+
+    // First time this round they drop into the danger zone.
+    const before = (def.health + dmg) / def.maxHealth;
+    const after = def.health / def.maxHealth;
+    if (before >= 0.3 && after < 0.3 && after > 0) {
+      this.emit({ type: 'lowHealth', fighter: def.id });
     }
 
     if (mv.knockdown || mv.isThrowHit) {

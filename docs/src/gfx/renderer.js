@@ -104,6 +104,8 @@ export class Renderer {
 
     for (const p of match.projectiles) this.drawProjectile(w, p, match);
 
+    if (juice.fatality) this.drawFatality(w, match, juice.fatality);
+
     px.draw(w, 1);
 
     if (settings.data.video.showHitboxes || extra.training) this.drawBoxes(w, match);
@@ -272,7 +274,7 @@ export class Renderer {
         ctx.fillStyle = '#5a4a10';
         ctx.font = '900 15px Impact, sans-serif';
         ctx.textAlign = 'center';
-        ctx.save(); ctx.scale(1, -1);
+        ctx.save(); ctx.scale(p.facing, 1);   // undo the facing mirror, keep y upright
         ctx.fillText('TARIFF', 0, 6);
         ctx.restore();
         break;
@@ -283,7 +285,7 @@ export class Renderer {
         ctx.lineWidth = 3;
         ctx.font = `900 ${p.kind === 'shout' ? 30 : 22}px Impact, sans-serif`;
         ctx.textAlign = 'center';
-        ctx.save(); ctx.scale(1, -1);
+        ctx.save(); ctx.scale(p.facing, 1);   // undo the facing mirror, keep y upright
         const txt = p.kind === 'shout' ? 'HOW DARE YOU' : 'BLAH';
         ctx.strokeText(txt, 0, 8);
         ctx.fillText(txt, 0, 8);
@@ -333,7 +335,7 @@ export class Renderer {
         ctx.fillStyle = '#fff';
         ctx.font = '900 18px Impact, sans-serif';
         ctx.textAlign = 'center';
-        ctx.save(); ctx.scale(1, -1); ctx.fillText('X', 0, 6); ctx.restore();
+        ctx.save(); ctx.scale(p.facing, 1);   // undo the facing mirror, keep y upright ctx.fillText('X', 0, 6); ctx.restore();
         break;
       }
       case 'peso': {
@@ -343,7 +345,7 @@ export class Renderer {
         ctx.fillStyle = '#3f6b53';
         ctx.font = '900 22px Impact, sans-serif';
         ctx.textAlign = 'center';
-        ctx.save(); ctx.scale(1, -1); ctx.fillText('$', 0, 8); ctx.restore();
+        ctx.save(); ctx.scale(p.facing, 1);   // undo the facing mirror, keep y upright ctx.fillText('$', 0, 8); ctx.restore();
         break;
       }
       case 'jet': {
@@ -500,7 +502,7 @@ export class Renderer {
         ctx.fillStyle = '#fff';
         ctx.font = '900 19px Impact, sans-serif';
         ctx.textAlign = 'center';
-        ctx.save(); ctx.scale(1, -1);
+        ctx.save(); ctx.scale(p.facing, 1);   // undo the facing mirror, keep y upright
         ctx.fillText('64', 0, 6);
         ctx.restore();
         break;
@@ -517,6 +519,77 @@ export class Renderer {
         ctx.arc(0, 0, p.w / 5, 0, TAU);
         ctx.fill();
       }
+    }
+    ctx.restore();
+  }
+
+  /* ══════════════════════════════════════════════════════
+     Fatality: the trophy leaves the loser and ends up overhead.
+     ══════════════════════════════════════════════════════ */
+  drawFatality(ctx, match, ft) {
+    const loser = match.fighters[ft.loser];
+    const winner = match.fighters[ft.winner];
+    const f = ft.frame;
+    if (f < 96) return;                       // nothing pulled out yet
+
+    // 96 → 150: rises out of the body. 150+: held aloft, swaying.
+    const t = Math.min(1, (f - 96) / 54);
+    const ease = t * t * (3 - 2 * t);
+    const sx = loser.x + (winner.x - loser.x) * ease;
+    const sy = (loser.y + 100) + (200 - (loser.y + 100)) * ease
+             + (f > 150 ? Math.sin(f * 0.08) * 6 : 0);
+
+    ctx.save();
+    ctx.translate(sx, -sy);
+
+    // It drips the whole time it's up there.
+    ctx.shadowColor = ft.trophy.color;
+    ctx.shadowBlur = 26;
+    ctx.fillStyle = ft.trophy.color;
+
+    if (ft.trophy.kind === 'organ') {
+      if (ft.trophy.label.includes('SPINE')) {
+        ctx.fillRect(-4, -46, 8, 92);
+        ctx.fillStyle = '#e8e2d4';
+        for (let i = -4; i <= 4; i++) {
+          ctx.beginPath();
+          ctx.ellipse(0, i * 11, 11, 4.6, 0, 0, TAU);
+          ctx.fill();
+        }
+      } else {
+        // A heart, beating.
+        const pulse = 1 + Math.sin(f * 0.34) * 0.09;
+        ctx.scale(pulse, pulse);
+        ctx.beginPath();
+        ctx.moveTo(0, 18);
+        ctx.bezierCurveTo(-26, -4, -14, -26, 0, -12);
+        ctx.bezierCurveTo(14, -26, 26, -4, 0, 18);
+        ctx.fill();
+        ctx.fillStyle = '#5e0a12';
+        ctx.fillRect(-3, -24, 6, 12);
+      }
+    } else {
+      // A prop: a plaque with its name, still dripping.
+      ctx.fillStyle = ft.trophy.color;
+      rr(ctx, -40, -18, 80, 36, 6);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#05070b';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.fillStyle = '#05070b';
+      ctx.font = '900 13px Impact, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(ft.trophy.label.replace(/^THE /, ''), 0, 5);
+    }
+
+    // Blood running off whatever it is.
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#8e0f1a';
+    for (let i = 0; i < 3; i++) {
+      const dx = -16 + i * 16;
+      const len = 8 + ((f * 0.6 + i * 20) % 26);
+      ctx.fillRect(dx, 14, 3, len);
     }
     ctx.restore();
   }
