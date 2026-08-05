@@ -96,21 +96,24 @@ they're connected, **no game traffic passes through it**.
 
 ### Two ways to connect
 
-Either way the host gets a **shareable link**. Your opponent clicks it and the
-game does the rest — no codes to type.
+Press **Invite a friend**, send the link, and whoever opens it first is in.
+Nothing to type, nothing to paste back.
 
-**Room code** — needs the bundled server running somewhere both players can
-reach. Auto-detected when you're serving the game from it; otherwise put its
-`ws://` / `wss://` address in **Settings → Match → Signalling server**. One
-click on the link joins the room outright.
+That works with no server of ours because public WebTorrent trackers exist to
+introduce two browsers interested in the same thing — both ends derive the
+same room id from the link and the tracker passes the connection offer across.
+No account, nothing to host, works from GitHub Pages.
 
-**Direct connect** — needs nothing at all. The host sends an invite link; the
-opponent clicks it, the game answers automatically and hands them one reply
-code to send back. That's all a matchmaking server ever does, and you already
-have a dozen ways to send someone a message.
+If no tracker answers, the lobby falls back to a **manual exchange**: the host
+sends a code, the opponent's game answers it automatically, and they send one
+reply code back. Slower, but it depends on nothing but the two of you.
 
-> The reply comes back as a code rather than a link because the host's page
-> must stay open — a live connection offer can't survive a reload.
+There's also a **room-code** path for the bundled server, auto-detected when
+you're serving the game from it, or configurable in **Settings → Match →
+Signalling server**.
+
+> The tracker is the only part of this that leans on infrastructure we don't
+> control, which is why it's strictly an accelerator with a fallback behind it.
 
 Direct connect is what makes online work from **GitHub Pages**, which is
 static-only and can't host a WebSocket endpoint. It's under *"No matchmaking

@@ -158,6 +158,36 @@
       </div>
     </div>
 
+    <!-- Host: automatic matchmaking — just wait for them to click -->
+    <div class="lobby-step" data-step="host-auto" hidden>
+      <div class="wiz">
+        <div class="wiz__row">
+          <span class="wiz__num">1</span>
+          <div class="wiz__body">
+            <h3>Send this link. First one to open it is in.</h3>
+            <textarea class="codebox codebox--link" id="auto-link" readonly rows="2"
+                      placeholder="Creating your invitation…"></textarea>
+            <div class="wiz__actions">
+              <button class="btn btn--primary" data-action="copy-auto-link">Copy invite link</button>
+            </div>
+            <p class="card__hint" id="auto-hint">
+              Nothing to paste back &mdash; the fight starts the moment they open it.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="probe"><span class="spinner" aria-hidden="true"></span>
+        <span id="auto-wait">Waiting for your opponent…</span></div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="lobby-back">Cancel</button>
+    </div>
+
+    <!-- Guest: opened an automatic link, connecting on its own -->
+    <div class="lobby-step" data-step="guest-auto" hidden>
+      <div class="probe"><span class="spinner" aria-hidden="true"></span>
+        <span id="guest-auto-text">Joining your opponent…</span></div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="lobby-back">Cancel</button>
+    </div>
+
     <!-- Host: share the link, then paste the reply -->
     <div class="lobby-step" data-step="host-share" hidden>
       <div class="wiz">

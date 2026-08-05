@@ -30,6 +30,7 @@ import { Renderer } from './gfx/renderer.js';
 
 import { SignalClient, defaultSignalUrl, signallingHint, probeSignal } from './net/signal.js';
 import { ManualSignal, waitForIce, encodeSignal, decodeSignal } from './net/manual.js';
+import { TrackerClient } from './net/tracker.js';
 import { Peer } from './net/peer.js';
 import { Netplay } from './net/netplay.js';
 
@@ -149,6 +150,7 @@ class App {
       case 'direct-accept': this._directAccept(); break;
       case 'copy-offer':      this._copyBox('direct-offer', btn); break;
       case 'copy-offer-link': this._copyBox('direct-offer-link', btn); break;
+      case 'copy-auto-link':  this._copyBox('auto-link', btn); break;
       case 'copy-answer':     this._copyBox('direct-answer', btn); break;
       case 'copy-room-link':  this._copyText(this._roomLink(), btn); break;
       default: break;
@@ -481,6 +483,11 @@ class App {
   /** Act on an invite the player arrived with. */
   async _openInvite(invite) {
     await this._toOnline();
+    if (invite.kind === 'auto') {
+      if (await this._autoJoin(invite.value)) return;
+      this._netStep('choose');
+      return;
+    }
     if (invite.kind === 'room') {
       document.getElementById('join-code').value = invite.value;
       this._netStatus('working', 'Joining the room you were invited to…');
@@ -497,16 +504,112 @@ class App {
 
   /* ── Serverless direct connect ───────────────────────── */
 
-  /** Build a Peer with no signalling server behind it. */
-  _directPeer(initiator) {
+  /**
+   * Build a Peer with no signalling server behind it.
+   * Tearing down first clears any half-finished attempt, but the tracker we
+   * are mid-way through using has to survive that — it is the thing that
+   * will carry this peer's offer.
+   */
+  _directPeer(initiator, keepTracker = false) {
+    const tracker = keepTracker ? this.tracker : null;
+    if (keepTracker) this.tracker = null;      // hide it from the teardown
     this._teardownNet();
+    if (keepTracker) this.tracker = tracker;
     this.manual = new ManualSignal();
     this.peer = new Peer(this.manual, initiator);
     this._watchPeer();
     return this.peer;
   }
 
+  /**
+   * Host with automatic matchmaking. The invite link carries a room code;
+   * a public tracker introduces the two browsers, so whoever opens the
+   * link first is simply accepted — nothing to paste back.
+   *
+   * Falls through to the manual exchange if no tracker answers, because
+   * that path depends on somebody else's infrastructure and this one
+   * doesn't.
+   */
   async _directHost() {
+    this._netStep('host-auto');
+    const linkBox = document.getElementById('auto-link');
+    linkBox.value = '';
+    this._netStatus('working', 'Setting up matchmaking…');
+
+    const code = this._newRoomCode();
+    this.tracker = new TrackerClient(code);
+    const up = await this.tracker.connect();
+    if (!up) {
+      this.tracker.close();
+      this.tracker = null;
+      this._netStatus('working', 'Matchmaking unavailable — swapping codes by hand instead.');
+      return this._directHostManual();
+    }
+
+    try {
+      const peer = this._directPeer(true, true);
+      await peer.start();
+      await waitForIce(peer.pc);
+
+      linkBox.value = this._link('t', code);
+      this._netStatus('ok', 'Invitation ready. Send the link.');
+      this.tracker.publishOffer({ type: 'offer', sdp: peer.pc.localDescription.sdp });
+
+      // First answer wins; later ones are ignored.
+      this.tracker.addEventListener('answer', (ev) => {
+        if (this._answered) return;
+        this._answered = true;
+        document.getElementById('auto-wait').textContent = 'Opponent found. Connecting…';
+        this.manual.deliver({ kind: 'answer', sdp: ev.detail.answer });
+      }, { once: false });
+
+      peer.waitOpen(20 * 60 * 1000)
+        .then(() => { this.tracker?.close(); this.tracker = null; this._directConnected(0); })
+        .catch(() => { /* surfaced by the peer close handler */ });
+    } catch (err) {
+      this._netStatus('error', err.message || 'Could not create an invitation.');
+      audio.play('uiError');
+    }
+  }
+
+  _newRoomCode() {
+    const A = 'ABCDEFGHJKLMNPQRTUVWXYZ23456789';
+    let c = '';
+    for (let i = 0; i < 8; i++) c += A[Math.floor(Math.random() * A.length)];
+    return c;
+  }
+
+  /** Join a room code automatically. Returns false if no tracker answers. */
+  async _autoJoin(code) {
+    this._netStep('guest-auto');
+    this._netStatus('working', 'Finding your opponent…');
+    this.tracker = new TrackerClient(code);
+    if (!(await this.tracker.connect())) {
+      this.tracker.close(); this.tracker = null;
+      return false;
+    }
+    this.tracker.seek();
+    try {
+      const { offer, offerId, fromPeer } = await this.tracker.once('offer', 25000);
+      document.getElementById('guest-auto-text').textContent = 'Opponent found. Connecting…';
+      const peer = this._directPeer(false, true);
+      this.manual.deliver({ kind: 'offer', sdp: offer });
+      await this._waitFor(() => peer.pc.localDescription, 8000, 'Could not answer.');
+      await waitForIce(peer.pc);
+      this.tracker.sendAnswer({ type: 'answer', sdp: peer.pc.localDescription.sdp },
+                              offerId, fromPeer);
+      peer.waitOpen(60000)
+        .then(() => { this.tracker?.close(); this.tracker = null; this._directConnected(1); })
+        .catch(() => this._netStatus('error', 'Could not reach your opponent.'));
+      return true;
+    } catch {
+      this.tracker.close(); this.tracker = null;
+      this._netStatus('error', 'That invitation has expired or the host has gone.');
+      return false;
+    }
+  }
+
+  async _directHostManual() {
     this._netStep('host-share');
     const box = document.getElementById('direct-offer');
     const linkBox = document.getElementById('direct-offer-link');
@@ -729,6 +832,9 @@ class App {
     this.peer = null;
     this.signal?.close();
     this.signal = null;
+    this.tracker?.close();
+    this.tracker = null;
+    this._answered = false;
     this.manual = null;
     this.pendingOnline = null;
   }
@@ -961,8 +1067,10 @@ const pendingInvite = (() => {
   const params = new URLSearchParams(hash);
   const room = params.get('r');
   const offer = params.get('i');
-  if (!room && !offer) return null;
+  const auto = params.get('t');
+  if (!room && !offer && !auto) return null;
   history.replaceState(null, '', location.pathname + location.search);
+  if (auto) return { kind: 'auto', value: auto };
   return room ? { kind: 'room', value: room } : { kind: 'offer', value: offer };
 })();
 
