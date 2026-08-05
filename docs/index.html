@@ -107,6 +107,31 @@
         <span>Looking for a matchmaking server…</span></div>
     </div>
 
+    <!-- Arrived on an invite link: joining it is the only thing on screen.
+         Anything else here is a way to accidentally start a second room. -->
+    <div class="lobby-step" data-step="invited" hidden>
+      <div class="probe"><span class="spinner" aria-hidden="true"></span>
+        <span id="invited-text">Joining your opponent…</span></div>
+      <button class="btn btn--ghost btn--sm lobby__alt" data-action="lobby-back">Cancel</button>
+    </div>
+
+    <!-- The invite could not be honoured. The one thing a lost guest must not
+         be offered here is a big "Create Room" button: taking it leaves them
+         sitting alone in a second room while the host waits in the first. -->
+    <div class="lobby-step" data-step="invite-failed" hidden>
+      <p class="lobby__lead" id="invite-failed-lead">That invitation is no longer open.</p>
+      <div class="lobby__pick">
+        <button class="btn btn--primary btn--lg" data-action="invite-retry">
+          Try again
+          <small>Re-join room <span id="invite-failed-code">------</span></small>
+        </button>
+        <button class="btn btn--lg" data-action="invite-abandon">
+          Start my own room
+          <small>Ask your friend for a fresh link instead</small>
+        </button>
+      </div>
+    </div>
+
     <!-- A server is available: room codes -->
     <div class="lobby-step" data-step="rooms" hidden>
       <div class="lobby">
@@ -120,6 +145,13 @@
           </div>
           <button class="btn btn--accent" data-action="copy-room-link" id="copy-room-link" hidden>
             Copy join link
+          </button>
+          <p class="card__hint" id="room-open-hint" hidden>
+            This room stays open until you close it or leave this page — take
+            as long as you like to send the link.
+          </p>
+          <button class="btn btn--ghost btn--sm" data-action="close-room" id="close-room" hidden>
+            Close room
           </button>
         </div>
 

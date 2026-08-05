@@ -204,12 +204,17 @@ export class TrackerClient extends EventTarget {
     this.sockets = [];
   }
 
-  /** Await one event, with a deadline. */
+  /** Await one event. Pass Infinity to wait for as long as the page is open. */
   once(name, ms) {
     return new Promise((resolve, reject) => {
       const on = (e) => { cleanup(); resolve(e.detail); };
-      const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, ms);
-      const cleanup = () => { clearTimeout(timer); this.removeEventListener(name, on); };
+      const timer = Number.isFinite(ms)
+        ? setTimeout(() => { cleanup(); reject(new Error('timeout')); }, ms)
+        : null;
+      const cleanup = () => {
+        if (timer) clearTimeout(timer);
+        this.removeEventListener(name, on);
+      };
       this.addEventListener(name, on);
     });
   }

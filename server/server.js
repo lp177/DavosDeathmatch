@@ -164,6 +164,9 @@ const server = http.createServer((req, res) => {
 
 const GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
+/** Every open WebSocket, so the keepalive sweep can reach them. */
+const live = new Set();
+
 class WsConnection {
   constructor(socket) {
     this.socket = socket;
@@ -179,11 +182,22 @@ class WsConnection {
     socket.on('error', () => this._die());
     socket.setTimeout(0);
     socket.setNoDelay(true);
+    live.add(this);
+  }
+
+  /** Keep the connection warm. A lobby is idle by nature — the host opens a
+   *  room and then goes off to paste the link into a chat app — and an idle
+   *  TCP connection is exactly what NAT tables and middleboxes reclaim. The
+   *  room would then vanish silently, and the link already sent would be dead
+   *  on arrival with nothing to explain why. */
+  ping() {
+    this._send(0x9, Buffer.alloc(0));
   }
 
   _die() {
     if (this.closed) return;
     this.closed = true;
+    live.delete(this);
     this.onClose?.();
   }
 
@@ -334,7 +348,6 @@ server.on('upgrade', (req, socket, head) => {
 /** Unambiguous alphabet: no O/0, I/1, S/5 to read out loud. */
 const ALPHABET = 'ABCDEFGHJKLMNPQRTUVWXYZ23456789';
 const rooms = new Map();      // code -> { host, guest, created }
-const ROOM_TTL_MS = 30 * 60 * 1000;
 
 function newCode() {
   let code;
@@ -372,11 +385,17 @@ function handleClient(conn) {
     switch (msg.t) {
       case 'host': {
         if (conn.room) leaveRoom(conn);
-        const code = newCode();
+        // A host whose socket dropped may ask for its old code back. The link
+        // is already in a chat window somewhere by then, so minting a new code
+        // would quietly invalidate the only thing the guest has. Only grant it
+        // if nobody else holds that code.
+        const wanted = String(msg.code || '').toUpperCase().trim();
+        const reclaim = /^[A-Z0-9]{6}$/.test(wanted) && !rooms.has(wanted);
+        const code = reclaim ? wanted : newCode();
         rooms.set(code, { host: conn, guest: null, created: Date.now() });
         conn.room = code;
         conn.sendJson({ t: 'hosted', code });
-        log(`room ${code} opened`);
+        log(`room ${code} ${reclaim ? 'reclaimed' : 'opened'}`);
         break;
       }
 
@@ -421,17 +440,31 @@ function handleClient(conn) {
   conn.onClose = () => leaveRoom(conn);
 }
 
-/* Reap rooms nobody ever joined. */
+/* Keep idle lobbies alive. Well under the 60s that most NAT tables and
+   proxies use for an idle TCP entry. */
 setInterval(() => {
-  const now = Date.now();
+  for (const conn of live) {
+    try { conn.ping(); } catch { /* it will be reaped by its own error handler */ }
+  }
+}, 25_000).unref();
+
+/* Drop rooms whose host has actually gone.
+ *
+ * Deliberately not a time limit. A room is a page someone has open, and it
+ * lasts exactly as long as that page does — expiring one on a timer would
+ * invalidate an invite link that is sitting unread in a chat, which is the
+ * normal case, not an edge case. The keepalive above is what makes this safe:
+ * a host that closed its laptop is detected as a dead socket rather than
+ * lingering, so the map stays bounded by the number of live connections. */
+setInterval(() => {
   for (const [code, room] of rooms) {
-    if (now - room.created > ROOM_TTL_MS) {
-      room.host?.close(1000);
-      room.guest?.close(1000);
+    if (!room.host || room.host.closed) {
+      room.guest?.sendJson({ t: 'peer-left' });
       rooms.delete(code);
+      log(`room ${code} closed (host gone)`);
     }
   }
-}, 60_000).unref();
+}, 30_000).unref();
 
 function log(msg) {
   process.stdout.write(`[davos] ${msg}\n`);

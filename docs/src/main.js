@@ -61,6 +61,7 @@ class App {
     this.netplay = null;
     this.peer = null;
     this.signal = null;
+    this.invite = null;      // the invite link this player arrived on, if any
     this.paused = false;
     this.acc = 0;
     this.lastNow = performance.now();
@@ -153,6 +154,9 @@ class App {
       case 'direct-join':   this._directJoin(); break;
       case 'direct-mode':   this._netStep('choose'); break;
       case 'lobby-back':    this._lobbyRestart(); break;
+      case 'invite-retry':  this._retryInvite(); break;
+      case 'invite-abandon': this._abandonInvite(); break;
+      case 'close-room':    this._lobbyRestart(); break;
       case 'direct-reply':  this._directReply(); break;
       case 'direct-accept': this._directAccept(); break;
       case 'copy-offer':      this._copyBox('direct-offer', btn); break;
@@ -284,6 +288,7 @@ class App {
 
   _quitToHome() {
     this._teardownNet();
+    this.invite = null;   // leaving the lobby ends the invitation too
     this.match = null;
     this.ai = null;
     this.paused = false;
@@ -345,8 +350,22 @@ class App {
     this.netStep = name;
   }
 
+  /** Hide the room code and everything that only makes sense beside it. */
+  _resetRoomUi() {
+    for (const id of ['roomcode', 'copy-room-link', 'room-open-hint', 'close-room']) {
+      const el = document.getElementById(id);
+      if (el) el.hidden = true;
+    }
+  }
+
   _lobbyRestart() {
+    // Closing the signalling socket is what actually ends the room: the server
+    // keeps it alive for exactly as long as the host is connected.
     this._teardownNet();
+    this._resetRoomUi();
+    // Reaching the ordinary lobby is a deliberate choice to stop following the
+    // invite, so stop treating failures here as invite failures.
+    this.invite = null;
     this._netStep(this.hasSignalling ? 'rooms' : 'choose');
     this._netStatus('idle', 'Not connected');
   }
@@ -354,8 +373,7 @@ class App {
   async _toOnline() {
     this._teardownNet();
     this.show('online');
-    document.getElementById('roomcode').hidden = true;
-    document.getElementById('copy-room-link').hidden = true;
+    this._resetRoomUi();
 
     // Find out what's actually possible before offering anything. Showing a
     // room-code form that cannot work — and a direct-connect panel next to
@@ -400,19 +418,37 @@ class App {
     this._netStat('ns-signal', 'connected');
   }
 
-  async _hostGame() {
+  async _hostGame(reclaim = null) {
+    const epoch = (this._netEpoch = (this._netEpoch || 0) + 1);
     try {
       await this._ensureIce();
       await this._connectSignal();
-      this.signal.host();
+      this.signal.host(reclaim);
       const { code } = await this.signal.once((m) => m.t === 'hosted');
 
       document.getElementById('roomcode').hidden = false;
       document.getElementById('roomcode-value').textContent = code;
       document.getElementById('copy-room-link').hidden = false;
+      document.getElementById('room-open-hint').hidden = false;
+      document.getElementById('close-room').hidden = false;
       this._netStatus('working', 'Room open — waiting for an opponent…');
 
-      await this.signal.once((m) => m.t === 'peer-joined', 10 * 60 * 1000);
+      try {
+        // No deadline: the room stays open for as long as this page is.
+        await this.signal.once((m) => m.t === 'peer-joined', Infinity);
+      } catch (err) {
+        // The wait is long by design, and the link is already in someone's
+        // chat window. If the socket died rather than the player giving up,
+        // reconnect and ask for the same code back instead of ending the
+        // wait — otherwise the link they sent points at nothing.
+        if (/closed/i.test(err.message || '') && this.netStep === 'rooms'
+            && this._netEpoch === epoch) {
+          this._netStatus('working', 'Reconnecting — your room code still works…');
+          this._hostGame(code);
+          return;
+        }
+        throw err;
+      }
       this._netStatus('working', 'Opponent found. Connecting directly…');
 
       this.peer = new Peer(this.signal, true, this.iceServers);
@@ -463,10 +499,46 @@ class App {
    * "Could not reach the server" is true and useless; the reason it can't
    * be reached is almost always that there isn't one, which has a fix.
    */
+  /**
+   * The invite couldn't be honoured. Offer to try it again — the host may
+   * simply be a few seconds behind — and make abandoning it a deliberate,
+   * clearly-labelled second choice rather than the default.
+   */
+  _inviteFailed(reason) {
+    const code = this.invite?.value || '';
+    document.getElementById('invite-failed-lead').textContent = reason;
+    document.getElementById('invite-failed-code').textContent =
+      this.invite?.kind === 'room' ? code : 'the invitation';
+    this._netStep('invite-failed');
+    this._netStatus('error', reason);
+    audio.play('uiError');
+  }
+
+  _retryInvite() {
+    if (!this.invite) { this._lobbyRestart(); return; }
+    this._openInvite(this.invite).catch(() =>
+      this._inviteFailed('That invitation still cannot be reached.'));
+  }
+
+  /** Deliberately give up on the invite and use the lobby normally. */
+  _abandonInvite() {
+    this.invite = null;
+    clearInvite();
+    this._lobbyRestart();
+  }
+
   _netFailed(err, what) {
     audio.play('uiError');
     const url = defaultSignalUrl();
     const noServer = /reach|timed out|Invalid signalling|No signalling/i.test(err.message || '');
+    // An invited player gets the invite-specific recovery screen, never the
+    // generic lobby: the generic one leads straight to a second empty room.
+    if (this.invite) {
+      this._inviteFailed(noServer
+        ? 'Could not reach the matchmaking server to join that room.'
+        : (err.message || 'That invitation could not be opened.'));
+      return;
+    }
     if (noServer) {
       this.hasSignalling = false;
       this._netStatus('error',
@@ -496,16 +568,29 @@ class App {
     return this._link('r', document.getElementById('roomcode-value').textContent.trim());
   }
 
-  /** Act on an invite the player arrived with. */
+  /**
+   * Act on an invite the player arrived with.
+   *
+   * Everything here exists to protect one property: a player who followed an
+   * invite link must never quietly end up somewhere that isn't their friend's
+   * room. The failure that motivated it is subtle — the guest is dropped into
+   * the ordinary lobby, whose most obvious button is "Create Room", so they
+   * take it and sit alone with a brand-new code while the host waits in the
+   * original room. Both people see a plausible screen and neither sees the bug.
+   */
   async _openInvite(invite) {
+    this.invite = invite;
     await this._toOnline();
     if (invite.kind === 'auto') {
       if (await this._autoJoin(invite.value)) return;
-      this._netStep('choose');
+      this._inviteFailed('That invitation has expired, or the host has closed it.');
       return;
     }
     if (invite.kind === 'room') {
       document.getElementById('join-code').value = invite.value;
+      this._netStep('invited');
+      document.getElementById('invited-text').textContent =
+        `Joining room ${invite.value}…`;
       this._netStatus('working', 'Joining the room you were invited to…');
       await this._joinGame();
       return;
@@ -595,7 +680,8 @@ class App {
         this.manual.deliver({ kind: 'answer', sdp: ev.detail.answer });
       }, { once: false });
 
-      peer.waitOpen(20 * 60 * 1000)
+      // Open-ended: the invitation stays live until this page closes.
+      peer.waitOpen(Infinity)
         .then(() => { this.tracker?.close(); this.tracker = null; this._directConnected(0); })
         .catch(() => { /* surfaced by the peer close handler */ });
     } catch (err) {
@@ -623,7 +709,20 @@ class App {
     }
     this.tracker.seek();
     try {
-      const { offer, offerId, fromPeer } = await this.tracker.once('offer', 25000);
+      // Keep looking for as long as they leave the page open. The host
+      // re-advertises every few seconds, so an invitation opened long before
+      // the host was ready still finds them; giving up after half a minute
+      // only ever punishes the patient.
+      const waited = document.getElementById('guest-auto-text');
+      let seconds = 0;
+      this._seekTimer = setInterval(() => {
+        seconds += 5;
+        waited.textContent = seconds < 20
+          ? 'Finding your opponent…'
+          : `Still waiting for your opponent (${seconds}s) — they may not have opened the game yet.`;
+      }, 5000);
+      const { offer, offerId, fromPeer } = await this.tracker.once('offer', Infinity)
+        .finally(() => { clearInterval(this._seekTimer); this._seekTimer = null; });
       document.getElementById('guest-auto-text').textContent = 'Opponent found. Connecting…';
       const peer = this._directPeer(false, true);
       this.manual.deliver({ kind: 'offer', sdp: offer });
@@ -659,8 +758,9 @@ class App {
       box.value = code;
       document.getElementById('direct-offer-link').value = this._link('i', code);
       this._netStatus('working', 'Send that link, then paste their reply below.');
-      // Connection completes the moment their answer is applied.
-      peer.waitOpen(10 * 60 * 1000)
+      // Connection completes the moment their answer is applied. No deadline:
+      // the invitation is good until this page closes.
+      peer.waitOpen(Infinity)
         .then(() => this._directConnected(0))
         .catch(() => { /* surfaced by the peer close handler */ });
     } catch (err) {
@@ -698,7 +798,7 @@ class App {
       document.getElementById('direct-answer').value = code;
       this._netStatus('working', 'Send that reply back and wait for them to connect.');
 
-      peer.waitOpen(10 * 60 * 1000)
+      peer.waitOpen(Infinity)
         .then(() => this._directConnected(1))
         .catch(() => { /* surfaced by the peer close handler */ });
     } catch (err) {
@@ -802,6 +902,10 @@ class App {
   }
 
   _onlineSelect(localPlayer, seed) {
+    // The invite has done its job; from here a reload should start clean
+    // rather than try to re-join a room this player is already inside.
+    this.invite = null;
+    clearInvite();
     input.solo = true;      // one person at this keyboard
     this.pendingOnline = { localPlayer, seed, picks: [null, null] };
     this.show('select');
@@ -876,8 +980,15 @@ class App {
   }
 
   _teardownNet() {
+    // Anything still waiting on the old connection must not act on its death:
+    // to a pending await, "the player closed the room" and "the network
+    // dropped" arrive as the identical rejection. Bumping the epoch lets the
+    // waiter tell them apart — without it, closing a room silently re-opens it.
+    this._netEpoch = (this._netEpoch || 0) + 1;
     clearInterval(this._bgTimer);
     this._bgTimer = null;
+    clearInterval(this._seekTimer);
+    this._seekTimer = null;
     try { this.netplay?.bye(); } catch { /* already gone */ }
     this.netplay?.dispose();
     this.netplay = null;
@@ -1102,10 +1213,13 @@ async function boot() {
   audio.music?.start({ bpm: 128, root: 55 });
   audio.music?.setIntensity(0.45);
 
-  // Arrived on an invite link? Go straight to it.
-  if (pendingInvite) {
+  // Arrived on an invite link? Go straight to it. Read it again rather than
+  // trusting the value from page load — a newer link may have arrived while
+  // the boot gate was still up.
+  const invite = readInvite() || pendingInvite;
+  if (invite) {
     try {
-      await app._openInvite(pendingInvite);
+      await app._openInvite(invite);
     } catch {
       app._netStatus('error', 'That invitation could not be read. Ask for a fresh one.');
     }
@@ -1113,9 +1227,21 @@ async function boot() {
 }
 
 /* Read the invite before anything else: the boot gate needs to know whether
-   this player was invited, and the fragment is cleared as soon as it's read
-   so a refresh can't try to replay a dead connection offer. */
-const pendingInvite = (() => {
+   this player was invited.
+
+   The fragment deliberately STAYS in the address bar until the invite has
+   actually been used. Clearing it on read looks tidy and quietly breaks the
+   feature: a reload — which is what an in-app browser does when it hands a
+   link to the real one, and what anyone does when a page seems stuck — then
+   loses the invitation for good. The player lands in the ordinary lobby,
+   presses the big "Create Room" button, and ends up alone in a new room while
+   their friend is still waiting in the old one.
+
+   A room code is idempotent, so replaying it is exactly right. A one-shot
+   direct offer isn't, but replaying a spent one fails with a clear message,
+   which still beats silently discarding the only thing that could connect
+   these two people. */
+function readInvite() {
   const hash = location.hash.slice(1);
   if (!hash) return null;
   const params = new URLSearchParams(hash);
@@ -1123,10 +1249,16 @@ const pendingInvite = (() => {
   const offer = params.get('i');
   const auto = params.get('t');
   if (!room && !offer && !auto) return null;
-  history.replaceState(null, '', location.pathname + location.search);
   if (auto) return { kind: 'auto', value: auto };
   return room ? { kind: 'room', value: room } : { kind: 'offer', value: offer };
-})();
+}
+
+const pendingInvite = readInvite();
+
+/** Drop the invite from the URL — once it has served its purpose. */
+function clearInvite() {
+  if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+}
 
 if (pendingInvite) {
   document.getElementById('boot-btn').textContent = 'Accept the Invitation';
@@ -1138,6 +1270,27 @@ if (pendingInvite) {
 
 bootBtn.addEventListener('click', boot, { once: true });
 bootBtn.focus();
+
+/* A second invite arriving in a tab that is already open.
+ *
+ * This is the common case, not an exotic one: the first attempt didn't work,
+ * the host sends a fresh link, and the browser raises the tab that already has
+ * the game in it. Two URLs that differ only after the '#' are the same
+ * document, so nothing reloads and no script runs — the invitation lands in
+ * the address bar and is silently ignored. The player waits, concludes it is
+ * broken, and starts a room of their own. */
+window.addEventListener('hashchange', () => {
+  const invite = readInvite();
+  if (!invite) return;
+  const app = window.__davos;
+  if (!app) {                       // still on the boot gate: take it from there
+    document.getElementById('boot-btn').textContent = 'Accept the Invitation';
+    return;
+  }
+  if (app.screen === 'match') app._quitToHome();
+  app._openInvite(invite).catch(() =>
+    app._netStatus('error', 'That invitation could not be read. Ask for a fresh one.'));
+});
 
 // Warm up the speech voice list; some browsers populate it asynchronously.
 if (window.speechSynthesis) {

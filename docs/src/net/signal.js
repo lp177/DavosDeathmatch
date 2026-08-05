@@ -156,7 +156,8 @@ export class SignalClient extends EventTarget {
     }
   }
 
-  host() { this.send({ t: 'host' }); }
+  /** @param {string|null} code  ask for a specific code back after a reconnect */
+  host(code = null) { this.send(code ? { t: 'host', code } : { t: 'host' }); }
   join(code) { this.send({ t: 'join', code: String(code).toUpperCase().trim() }); }
   relay(payload) { this.send({ t: 'signal', payload }); }
 
@@ -165,7 +166,15 @@ export class SignalClient extends EventTarget {
     this.ws = null;
   }
 
-  /** Await one message matching a predicate, with a timeout. */
+  /**
+   * Await one message matching a predicate.
+   *
+   * Pass ms = Infinity to wait indefinitely. An open lobby has no natural
+   * deadline: the host may leave it up while they go and find someone to
+   * play, and a timer that quietly closes the room turns a link they sent
+   * into a dead one. The room lasts as long as the page is open, and only a
+   * closed socket ends the wait.
+   */
   once(pred, ms = 20000) {
     return new Promise((resolve, reject) => {
       const onMsg = (ev) => {
@@ -178,9 +187,11 @@ export class SignalClient extends EventTarget {
         }
       };
       const onClosed = () => { cleanup(); reject(new Error('Connection closed.')); };
-      const timer = setTimeout(() => { cleanup(); reject(new Error('Timed out.')); }, ms);
+      const timer = Number.isFinite(ms)
+        ? setTimeout(() => { cleanup(); reject(new Error('Timed out.')); }, ms)
+        : null;
       const cleanup = () => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         this.removeEventListener('message', onMsg);
         this.removeEventListener('closed', onClosed);
       };

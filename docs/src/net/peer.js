@@ -239,18 +239,24 @@ export class Peer extends EventTarget {
     this.open = false;
   }
 
+  /**
+   * @param {number} ms  Infinity to wait open-endedly, which is what an
+   *   invitation that hasn't been opened yet needs: nobody is failing to
+   *   connect, there is simply nobody there yet, and a deadline would retire
+   *   a link that is still perfectly good.
+   */
   waitOpen(ms = 25000) {
     if (this.open) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const timer = Number.isFinite(ms) ? setTimeout(() => {
         cleanup();
         reject(new Error('Could not establish a direct connection. '
           + 'One of you may be behind a restrictive NAT or firewall.'));
-      }, ms);
+      }, ms) : null;
       const onOpen = () => { cleanup(); resolve(); };
       const onClosed = () => { cleanup(); reject(new Error('Peer connection failed.')); };
       const cleanup = () => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         this.removeEventListener('open', onOpen);
         this.removeEventListener('closed', onClosed);
       };
