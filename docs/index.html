@@ -108,6 +108,9 @@
           <span class="roomcode__value" id="roomcode-value">------</span>
           <button class="btn btn--ghost btn--sm" data-action="copy-code">Copy</button>
         </div>
+        <button class="btn btn--accent btn--sm" data-action="copy-room-link" id="copy-room-link" hidden>
+          Copy join link
+        </button>
       </div>
 
       <div class="card">
@@ -141,18 +144,26 @@
         <button class="btn" data-action="direct-join">I was invited</button>
       </div>
 
-      <!-- Host: produce an invite, then paste the reply -->
+      <!-- Host: produce an invite link, then paste the reply -->
       <div class="direct__step" id="direct-host-step" hidden>
-        <label class="direct__label" for="direct-offer">
-          <b>1.</b> Send this invite to your opponent
+        <label class="direct__label" for="direct-offer-link">
+          <b>1.</b> Send your opponent this link &mdash; one click and they're in
         </label>
-        <textarea class="codebox" id="direct-offer" readonly rows="4"
+        <textarea class="codebox codebox--link" id="direct-offer-link" readonly rows="3"
                   placeholder="Generating…"></textarea>
-        <button class="btn btn--ghost btn--sm" data-action="copy-offer">Copy invite</button>
+        <button class="btn btn--primary" data-action="copy-offer-link">Copy invite link</button>
+        <details class="direct__alt">
+          <summary>Or send the raw code instead</summary>
+          <textarea class="codebox" id="direct-offer" readonly rows="4"></textarea>
+          <button class="btn btn--ghost btn--sm" data-action="copy-offer">Copy code</button>
+        </details>
 
         <label class="direct__label" for="direct-answer-in">
-          <b>2.</b> Paste the reply they send back
+          <b>2.</b> Paste the reply code they send back
         </label>
+        <p class="card__hint direct__warn">
+          Keep this page open &mdash; reloading it cancels the invitation.
+        </p>
         <textarea class="codebox" id="direct-answer-in" rows="4"
                   placeholder="Paste their reply code here…"></textarea>
         <button class="btn btn--accent" data-action="direct-accept">Connect</button>
@@ -160,18 +171,20 @@
 
       <!-- Guest: consume an invite, then hand back a reply -->
       <div class="direct__step" id="direct-join-step" hidden>
-        <label class="direct__label" for="direct-offer-in">
-          <b>1.</b> Paste the invite you were sent
+        <label class="direct__label" for="direct-offer-in" id="direct-offer-in-label">
+          <b>1.</b> Paste the invite code you were sent
         </label>
         <textarea class="codebox" id="direct-offer-in" rows="4"
                   placeholder="Paste their invite code here…"></textarea>
-        <button class="btn btn--primary" data-action="direct-reply">Generate reply</button>
+        <button class="btn btn--primary" data-action="direct-reply" id="direct-reply-btn">
+          Generate reply
+        </button>
 
         <label class="direct__label" for="direct-answer" id="direct-answer-label" hidden>
-          <b>2.</b> Send this reply back, then wait
+          <b>2.</b> Send this reply code back, then wait
         </label>
         <textarea class="codebox" id="direct-answer" readonly rows="4" hidden></textarea>
-        <button class="btn btn--ghost btn--sm" data-action="copy-answer" hidden>Copy reply</button>
+        <button class="btn btn--accent" data-action="copy-answer" hidden>Copy reply code</button>
       </div>
     </details>
 

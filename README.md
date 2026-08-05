@@ -96,13 +96,21 @@ they're connected, **no game traffic passes through it**.
 
 ### Two ways to connect
 
+Either way the host gets a **shareable link**. Your opponent clicks it and the
+game does the rest — no codes to type.
+
 **Room code** — needs the bundled server running somewhere both players can
 reach. Auto-detected when you're serving the game from it; otherwise put its
-`ws://` / `wss://` address in **Settings → Match → Signalling server**.
+`ws://` / `wss://` address in **Settings → Match → Signalling server**. One
+click on the link joins the room outright.
 
-**Direct connect** — needs nothing at all. The host generates an invite code,
-sends it over any chat, and pastes back the reply. That's all a matchmaking
-server ever does, and you already have a dozen ways to send someone a message.
+**Direct connect** — needs nothing at all. The host sends an invite link; the
+opponent clicks it, the game answers automatically and hands them one reply
+code to send back. That's all a matchmaking server ever does, and you already
+have a dozen ways to send someone a message.
+
+> The reply comes back as a code rather than a link because the host's page
+> must stay open — a live connection offer can't survive a reload.
 
 Direct connect is what makes online work from **GitHub Pages**, which is
 static-only and can't host a WebSocket endpoint. It's under *"No matchmaking

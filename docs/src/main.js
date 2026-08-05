@@ -145,8 +145,10 @@ class App {
       case 'direct-join':   this._directJoin(); break;
       case 'direct-reply':  this._directReply(); break;
       case 'direct-accept': this._directAccept(); break;
-      case 'copy-offer':    this._copyBox('direct-offer', btn); break;
-      case 'copy-answer':   this._copyBox('direct-answer', btn); break;
+      case 'copy-offer':      this._copyBox('direct-offer', btn); break;
+      case 'copy-offer-link': this._copyBox('direct-offer-link', btn); break;
+      case 'copy-answer':     this._copyBox('direct-answer', btn); break;
+      case 'copy-room-link':  this._copyText(this._roomLink(), btn); break;
       default: break;
     }
   }
@@ -356,6 +358,7 @@ class App {
 
       document.getElementById('roomcode').hidden = false;
       document.getElementById('roomcode-value').textContent = code;
+      document.getElementById('copy-room-link').hidden = false;
       this._netStatus('working', 'Room open — waiting for an opponent…');
 
       await this.signal.once((m) => m.t === 'peer-joined', 10 * 60 * 1000);
@@ -421,6 +424,43 @@ class App {
     }
   }
 
+  /* ── Shareable invite links ──────────────────────────── */
+
+  /**
+   * Invites travel in the URL fragment rather than the query string: a
+   * fragment is never sent to the server, which matters when the code is
+   * a connection offer, and it survives on any static host.
+   */
+  _link(kind, value) {
+    const base = location.origin + location.pathname;
+    return `${base}#${kind}=${encodeURIComponent(value)}`;
+  }
+
+  _roomLink() {
+    return this._link('r', document.getElementById('roomcode-value').textContent.trim());
+  }
+
+  /** Act on an invite the player arrived with. */
+  async _openInvite(invite) {
+    this._toOnline();
+    if (invite.kind === 'room') {
+      document.getElementById('join-code').value = invite.value;
+      this._netStatus('working', 'Joining the room you were invited to…');
+      await this._joinGame();
+      return;
+    }
+    // A direct-connect invite: fill it in and answer it straight away, so the
+    // player's only job is to send the reply code back.
+    const panel = document.getElementById('direct');
+    panel.open = true;
+    this._directJoin();
+    document.getElementById('direct-offer-in').value = invite.value;
+    document.getElementById('direct-offer-in-label').innerHTML =
+      '<b>1.</b> Invitation received';
+    this._netStatus('working', 'Answering the invitation…');
+    await this._directReply();
+  }
+
   /* ── Serverless direct connect ───────────────────────── */
 
   _directShow(which) {
@@ -441,14 +481,17 @@ class App {
     this._directShow('host');
     const box = document.getElementById('direct-offer');
     box.value = '';
+    document.getElementById('direct-offer-link').value = '';
     box.placeholder = 'Gathering connection details…';
     this._netStatus('working', 'Building your invite…');
     try {
       const peer = this._directPeer(true);
       await peer.start();
       await waitForIce(peer.pc);
-      box.value = await encodeSignal('offer', peer.pc.localDescription);
-      this._netStatus('working', 'Send that invite, then paste their reply below.');
+      const code = await encodeSignal('offer', peer.pc.localDescription);
+      box.value = code;
+      document.getElementById('direct-offer-link').value = this._link('i', code);
+      this._netStatus('working', 'Send that link, then paste their reply below.');
       // Connection completes the moment their answer is applied.
       peer.waitOpen(10 * 60 * 1000)
         .then(() => this._directConnected(0))
@@ -536,6 +579,19 @@ class App {
       };
       tick();
     });
+  }
+
+  async _copyText(text, btn) {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      const old = btn.textContent;
+      btn.textContent = 'Copied';
+      audio.play('uiConfirm');
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    } catch {
+      audio.play('uiError');
+    }
   }
 
   async _copyBox(id, btn) {
@@ -841,6 +897,37 @@ async function boot() {
   app.show('home');
   audio.music?.start({ bpm: 128, root: 55 });
   audio.music?.setIntensity(0.45);
+
+  // Arrived on an invite link? Go straight to it.
+  if (pendingInvite) {
+    try {
+      await app._openInvite(pendingInvite);
+    } catch {
+      app._netStatus('error', 'That invitation could not be read. Ask for a fresh one.');
+    }
+  }
+}
+
+/* Read the invite before anything else: the boot gate needs to know whether
+   this player was invited, and the fragment is cleared as soon as it's read
+   so a refresh can't try to replay a dead connection offer. */
+const pendingInvite = (() => {
+  const hash = location.hash.slice(1);
+  if (!hash) return null;
+  const params = new URLSearchParams(hash);
+  const room = params.get('r');
+  const offer = params.get('i');
+  if (!room && !offer) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  return room ? { kind: 'room', value: room } : { kind: 'offer', value: offer };
+})();
+
+if (pendingInvite) {
+  document.getElementById('boot-btn').textContent = 'Accept the Invitation';
+  document.querySelector('.boot__hint').textContent =
+    pendingInvite.kind === 'room'
+      ? 'You have been challenged. Continue to join the room.'
+      : 'You have been challenged. Continue to answer the invitation.';
 }
 
 bootBtn.addEventListener('click', boot, { once: true });

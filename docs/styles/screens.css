@@ -505,3 +505,12 @@
 .codebox:focus { outline: none; border-color: var(--primary); }
 .codebox[readonly] { color: var(--accent); background: #05070b; }
 .codebox::placeholder { color: var(--text-3); font-style: italic; }
+
+.codebox--link { color: var(--primary); font-size: 11.5px; }
+.direct__alt { margin-top: 2px; }
+.direct__alt > summary {
+  cursor: pointer; font-size: 12px; color: var(--text-3); padding: 4px 0;
+}
+.direct__alt > summary:hover { color: var(--text-2); }
+.direct__alt > * + * { margin-top: 8px; }
+.direct__warn { color: var(--warn); }
