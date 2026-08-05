@@ -44,6 +44,14 @@ class InputManager {
     /** Latest polled word per player, for UI readouts. */
     this.last = [0, 0];
     this.padsSeen = [false, false];
+    /**
+     * True whenever only one person is at the keyboard (arcade, training,
+     * online). Player 1 then answers to BOTH binding sets and both gamepads,
+     * so you can use the numpad or F/G/V/B, arrows or WASD, whichever your
+     * hands reach for — without rebinding anything. Local versus turns this
+     * off, because there the two sets have to stay separate.
+     */
+    this.solo = false;
 
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
@@ -108,13 +116,19 @@ class InputManager {
    * @param {number} player 0 or 1
    */
   poll(player) {
-    const binds = settings.data.keys[player === 0 ? 'p1' : 'p2'];
-    let word = 0;
+    // Solo: player one answers to both halves of the keyboard and both pads.
+    const merged = this.solo && player === 0;
+    const sides = merged ? ['p1', 'p2'] : [player === 0 ? 'p1' : 'p2'];
 
-    for (const { id, bit } of ACTIONS) {
-      if (this.held.has(binds[id])) word |= bit;
+    let word = 0;
+    for (const side of sides) {
+      const binds = settings.data.keys[side];
+      for (const { id, bit } of ACTIONS) {
+        if (this.held.has(binds[id])) word |= bit;
+      }
     }
     word |= this._pollPad(player);
+    if (merged) word |= this._pollPad(1);
 
     // Opposite directions cancel — mirrors real arcade SOCD handling and
     // stops "hold both to be unhittable" nonsense.

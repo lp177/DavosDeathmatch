@@ -173,6 +173,8 @@ class App {
 
   _toSelect(mode) {
     this._teardownNet();
+    // Only local versus needs the two binding sets kept apart.
+    input.solo = mode !== 'local';
     this.show('select');
     this.select.open({
       mode,
@@ -182,6 +184,7 @@ class App {
 
   _startMatch({ mode, chars, stage, seed, cfgOverride, localPlayer }) {
     this.mode = mode;
+    input.solo = mode !== 'local';
     this.select.close();
 
     const stageId = stage || STAGE_ORDER[Math.floor(Math.random() * STAGE_ORDER.length)];
@@ -400,6 +403,7 @@ class App {
   }
 
   _onlineSelect(localPlayer, seed) {
+    input.solo = true;      // one person at this keyboard
     this.pendingOnline = { localPlayer, seed, picks: [null, null] };
     this.show('select');
     this.select.open({

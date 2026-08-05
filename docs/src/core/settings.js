@@ -35,6 +35,12 @@ export const DEFAULTS = {
     difficulty: 'normal',// 'tourist' | 'normal' | 'delegate' | 'chairman'
     inputDelay: 2,       // netplay input delay in frames
   },
+  // Two comfortable clusters, split left/right so two people can share one
+  // keyboard without fighting over it in local versus.
+  //
+  // On your own, you aren't limited to Player 1's half: every solo mode
+  // accepts BOTH sets at once (see InputManager.solo), so the numpad works
+  // just as well as F/G/V/B without rebinding anything.
   keys: {
     p1: {
       up: 'KeyW', down: 'KeyS', left: 'KeyA', right: 'KeyD',

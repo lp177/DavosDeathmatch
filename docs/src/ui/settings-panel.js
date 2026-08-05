@@ -232,6 +232,10 @@ export function buildSettings() {
     const c = panel('controls');
     c.replaceChildren();
     const cg = group('Keyboard');
+    cg.appendChild(el('p', 'card__hint',
+      'Playing on your own? In Arcade, Training and Online, Player 1 answers to '
+      + 'BOTH sets at once — so the numpad works without changing anything here. '
+      + 'Local Versus keeps the two sets separate, one per player.'));
     cg.appendChild(bindGrid(render));
     c.appendChild(cg);
     const cg2 = group('Gamepads');
@@ -389,6 +393,14 @@ export function buildHowTo() {
   body.innerHTML = `
     <div class="howto">
       <div class="howto__grid">
+        <section>
+          <h3>Playing on your own</h3>
+          <p>In Arcade, Training and Online, <b>both</b> control sets drive your
+          fighter at once — WASD or the arrow keys, F/G/V/B or the numpad.
+          Use whichever your hands reach for; nothing needs rebinding.</p>
+          <p>Local Versus keeps them separate, one set per player.</p>
+        </section>
+
         <section>
           <h3>Player 1 defaults</h3>
           <dl>

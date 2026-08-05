@@ -39,8 +39,13 @@ the joke only lands if the source is recognisable.
 
 ## Controls
 
+**Playing on your own?** In Arcade, Training and Online, *both* control sets
+drive your fighter at once — WASD or the arrows, F/G/V/B or the numpad. Use
+whichever your hands reach for; nothing needs rebinding. Local Versus keeps
+them separate, one set per player.
+
 Everything is rebindable in Settings → Controls. Gamepads are detected
-automatically (pad 1 → P1, pad 2 → P2) with rumble on hits.
+automatically (pad 1 → P1, pad 2 → P2, either one in solo) with rumble on hits.
 
 | | Player 1 | Player 2 |
 | --- | --- | --- |
