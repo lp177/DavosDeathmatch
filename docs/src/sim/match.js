@@ -429,11 +429,19 @@ export class Match {
   /* ── Projectiles ──────────────────────────────────────── */
 
   spawnProjectile(f, spec) {
+    // `aim: true` measures the spawn from the OPPONENT instead of the owner.
+    //
+    // Anything that falls out of the sky has to land where the target actually
+    // is. Offsetting from the caster means the strike only connects at one
+    // exact spacing — at every other distance it lands on empty floor and the
+    // move reads as doing nothing at all, which is precisely how Macron's
+    // super behaved: a light show at fixed range, harmless the rest of the time.
+    const origin = spec.aim ? this.fighters[1 - f.id].x : f.x;
     const p = {
       id: PROJ_ID++,
       owner: f.id,
       kind: spec.kind || 'orb',
-      x: f.x + f.facing * (spec.x ?? 60),
+      x: origin + f.facing * (spec.x ?? 60),
       y: f.y + (spec.y ?? 100),
       vx: f.facing * (spec.vx ?? 9),
       vy: spec.vy ?? 0,

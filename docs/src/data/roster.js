@@ -655,17 +655,22 @@ const macron = finalise({
       quote: ['I am not accountable to you.| I am accountable to history.',
               'The French are Gauls| resistant to change.',
               'A crazy amount of money.'],
+      // Aimed at the opponent, not at a fixed distance in front of Macron.
+      // Two bolts bracket them — one cutting off the retreat, one the advance —
+      // then Jupiter himself lands on top. Each is placed where the target is
+      // at the moment it spawns, so running is a real answer without the whole
+      // move becoming scenery.
       spawns: [
-        { f: 16, kind: 'bolt', x: 180, y: 420, vx: 0, vy: -22, w: 58, h: 200,
+        { f: 16, kind: 'bolt', aim: true, x: -70, y: 420, vx: 0, vy: -22, w: 74, h: 200,
           damage: 70, chip: 12, hitstun: 18, blockstun: 12, hitstop: 8,
-          push: { x: 5, y: 6 }, life: 40, color: '#8fd0ff', hp: 99, pierce: true },
-        { f: 24, kind: 'bolt', x: 300, y: 420, vx: 0, vy: -22, w: 58, h: 200,
+          push: { x: 5, y: 6 }, life: 26, color: '#8fd0ff', hp: 99, pierce: true },
+        { f: 24, kind: 'bolt', aim: true, x: 70, y: 420, vx: 0, vy: -22, w: 74, h: 200,
           damage: 70, chip: 12, hitstun: 18, blockstun: 12, hitstop: 8,
-          push: { x: 5, y: 6 }, life: 40, color: '#a9dcff', hp: 99, pierce: true },
-        { f: 32, kind: 'bolt', x: 240, y: 440, vx: 0, vy: -24, w: 96, h: 230,
+          push: { x: 5, y: 6 }, life: 26, color: '#a9dcff', hp: 99, pierce: true },
+        { f: 32, kind: 'bolt', aim: true, x: 0, y: 440, vx: 0, vy: -24, w: 110, h: 230,
           damage: 150, chip: 20, hitstun: 32, blockstun: 18, hitstop: 20,
           push: { x: 13, y: 14 }, knockdown: true,
-          life: 44, color: '#dff1ff', hp: 99, pierce: true, sfx: 'explosion' },
+          life: 26, color: '#dff1ff', hp: 99, pierce: true, sfx: 'explosion' },
       ],
     }),
   },
