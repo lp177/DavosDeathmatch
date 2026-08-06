@@ -121,7 +121,9 @@ class InputManager {
     // Never hijack keys while the player is typing in a field.
     const el = document.activeElement;
     const tag = el?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    // A focused dropdown owns the arrow keys — stealing them to move the
+    // focus ring makes settings unusable from the keyboard.
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
     // Enter and Space are how a focused button is pressed. Swallowing them
     // here cancels the browser's own activation, which quietly makes every

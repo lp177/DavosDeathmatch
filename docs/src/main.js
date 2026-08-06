@@ -187,26 +187,46 @@ class App {
   }
 
   /**
-   * Let a controller drive the menus.
+   * Drive the menus from a controller OR the keyboard.
    *
-   * Two people on a sofa should never have to reach back to the keyboard to
-   * pick a fighter or start the next fight, so both pads share control of
-   * every screen outside the match. Character select does its own per-player
-   * polling — this covers the DOM screens, which are buttons.
+   * Two people on a sofa should never have to reach back to the keyboard, and
+   * someone at the keyboard should never have to reach for the mouse. Both
+   * feed the same directional word, so the two stay in step by construction.
+   *
+   * Movement keys come from the player's own bindings, which are physical
+   * positions — so this is WASD on QWERTY and ZQSD on AZERTY with no special
+   * case, and the numpad works too. Arrows are always accepted whatever the
+   * bindings say. Enter and Space are deliberately absent: the browser
+   * activates a focused button natively, and handling them here as well would
+   * press it twice.
    */
-  _padMenu() {
-    const edge = input.takePadMenu();
-    if (!edge) return;
+  _menuNav() {
+    // Always drain the pad, so presses can't queue up behind a match.
+    const padEdge = input.takePadMenu();
 
-    if (edge & IN.START) {
-      // Start/Options pauses a local match. Online has no pause.
+    if (padEdge & IN.START) {
       if (this.screen === 'match' && this.mode !== 'online') {
         this._setPaused(!this.paused);
         return;
       }
     }
-    if (this.screen === 'select') return;          // reads the pads itself
+    if (this.screen === 'select') return;          // reads the pads per player
     if (this.screen === 'match' && !this.paused) return;
+
+    // A dropdown owns the arrow keys while it has focus.
+    const active = document.activeElement;
+    if (active && ['SELECT', 'INPUT', 'TEXTAREA'].includes(active.tagName)) return;
+
+    let edge = padEdge;
+    const key = (code, bit) => { if (code && input.takeEdge(code)) edge |= bit; };
+    key('ArrowUp', IN.UP); key('ArrowDown', IN.DOWN);
+    key('ArrowLeft', IN.LEFT); key('ArrowRight', IN.RIGHT);
+    for (const side of ['p1', 'p2']) {
+      const b = settings.data.keys[side];
+      key(b.up, IN.UP); key(b.down, IN.DOWN);
+      key(b.left, IN.LEFT); key(b.right, IN.RIGHT);
+    }
+    if (!edge) return;
 
     // Pausing does not change this.screen — it unhides a separate section — so
     // scoping by screen alone looks for the pause buttons inside the match and
@@ -218,26 +238,67 @@ class App {
       || document.querySelector(`[data-screen="${this.screen}"]`);
     if (!scope) return;
 
-    const btns = [...scope.querySelectorAll('button')]
+    const btns = [...scope.querySelectorAll('button, [role="button"], select')]
       .filter((b) => !b.disabled && b.offsetParent !== null);
     if (!btns.length) return;
 
-    const here = btns.indexOf(document.activeElement);
-    const step = (n) => {
-      const next = here < 0 ? btns[0] : btns[(here + n + btns.length) % btns.length];
-      next.focus({ preventScroll: true });
-      audio.play('uiHover');
-    };
+    const dir = (edge & IN.UP) ? 'up' : (edge & IN.DOWN) ? 'down'
+              : (edge & IN.LEFT) ? 'left' : (edge & IN.RIGHT) ? 'right' : null;
 
-    if (edge & (IN.DOWN | IN.RIGHT)) step(1);
-    else if (edge & (IN.UP | IN.LEFT)) step(-1);
-    else if (edge & (IN.LP | IN.LK)) (here < 0 ? btns[0] : btns[here]).click();
-    else if (edge & (IN.HK | IN.TAUNT)) {
-      // Right face / bumper backs out, the way console menus do.
+    if (dir) {
+      const next = this._focusInDirection(btns, dir);
+      if (next && next !== document.activeElement) {
+        next.focus({ preventScroll: true });
+        audio.play('uiHover');
+      }
+      return;
+    }
+    // Controller-only actions; the keyboard uses Enter/Space and Escape.
+    const here = btns.indexOf(document.activeElement);
+    if (padEdge & (IN.LP | IN.LK)) (here < 0 ? btns[0] : btns[here]).click();
+    else if (padEdge & (IN.HK | IN.TAUNT)) {
       if (open) open.close();
       else if (this.paused) this._setPaused(false);
       else if (this.screen !== 'home') this._quitToHome();
     }
+  }
+
+  /**
+   * The control nearest in a direction, by geometry rather than DOM order.
+   *
+   * DOM order is a lie in any two-column layout — the lobby's "create" and
+   * "join" cards sit side by side, and stepping through the source there sends
+   * the focus ring wandering between panels. Score candidates by how far along
+   * the axis they are, penalising sideways drift so straight ahead wins.
+   */
+  _focusInDirection(items, dir) {
+    const cur = document.activeElement;
+    if (!items.includes(cur)) return items[0];
+
+    const r0 = cur.getBoundingClientRect();
+    const cx = r0.left + r0.width / 2;
+    const cy = r0.top + r0.height / 2;
+
+    let best = null;
+    let bestScore = Infinity;
+    for (const it of items) {
+      if (it === cur) continue;
+      const r = it.getBoundingClientRect();
+      const dx = (r.left + r.width / 2) - cx;
+      const dy = (r.top + r.height / 2) - cy;
+      const along = dir === 'right' ? dx : dir === 'left' ? -dx
+                  : dir === 'down' ? dy : -dy;
+      if (along <= 1) continue;                       // behind us, or level
+      const across = (dir === 'left' || dir === 'right') ? Math.abs(dy) : Math.abs(dx);
+      const score = along + across * 2;
+      if (score < bestScore) { bestScore = score; best = it; }
+    }
+    if (best) return best;
+
+    // Nothing that way: wrap, so a single column still cycles.
+    const i = items.indexOf(cur);
+    const fwd = dir === 'down' || dir === 'right';
+    return items[(i + (fwd ? 1 : -1) + items.length) % items.length];
   }
 
   /** `<dialog closedby>` isn't in Safari yet; add click-outside dismissal. */
@@ -1166,7 +1227,7 @@ class App {
     const dtFrames = Math.min(4, (elapsed / TICK_MS) * timeScale);
     this.dtReal = dtReal;
 
-    this._padMenu();
+    this._menuNav();
 
     if (this.screen === 'match' && this.match && !this.paused) {
       this.acc += elapsed * timeScale;
