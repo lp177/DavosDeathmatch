@@ -120,6 +120,16 @@ export class SelectScreen {
     this.root.hidden = false;
     this.timerEl.textContent = '';
     this._updateLabels();
+    // Seed every cursor's edge state from the CURRENT input.
+    //
+    // The player reached this screen by pressing a button, and on a controller
+    // that button is still down when the screen appears. Starting from zero
+    // makes it read as a fresh press, so choosing "Local Versus" instantly
+    // locked Player 1 into whoever the cursor happened to be sitting on.
+    for (const c of this.cursors) c._prev = input.poll(c.pad);
+    // Same hazard on the keyboard: Enter activated the menu button and is
+    // still sitting in the edge set.
+    input.clearEdges();
     this._refresh();
     this.grid.focus({ preventScroll: true });
   }

@@ -203,8 +203,14 @@ class App {
     if (this.screen === 'select') return;          // reads the pads itself
     if (this.screen === 'match' && !this.paused) return;
 
+    // Pausing does not change this.screen — it unhides a separate section — so
+    // scoping by screen alone looks for the pause buttons inside the match and
+    // finds nothing.
     const open = document.querySelector('dialog[open]');
-    const scope = open || document.querySelector(`[data-screen="${this.screen}"]`);
+    const pause = document.getElementById('screen-pause');
+    const scope = open
+      || (this.paused && pause && !pause.hidden ? pause : null)
+      || document.querySelector(`[data-screen="${this.screen}"]`);
     if (!scope) return;
 
     const btns = [...scope.querySelectorAll('button')]
@@ -224,6 +230,7 @@ class App {
     else if (edge & (IN.HK | IN.TAUNT)) {
       // Right face / bumper backs out, the way console menus do.
       if (open) open.close();
+      else if (this.paused) this._setPaused(false);
       else if (this.screen !== 'home') this._quitToHome();
     }
   }
