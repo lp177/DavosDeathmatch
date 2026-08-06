@@ -93,8 +93,13 @@ class App {
       audio.music?.setIntensity(0.45);
       if (!audio.music?.playing) audio.music?.start({ bpm: 128, root: 55 });
     }
+    // Drop focus when a fight starts: a button left focused from the previous
+    // screen would otherwise swallow Enter/Space, which a player may well have
+    // bound to an attack.
+    if (name === 'match') document.activeElement?.blur?.();
+
     // Focus the first control so keyboard users land somewhere sensible.
-    if (name !== 'select') {
+    if (name !== 'select' && name !== 'match') {
       const first = document.querySelector(`[data-screen="${name}"] .btn`);
       if (first && prev !== name) setTimeout(() => first.focus({ preventScroll: true }), 30);
     }

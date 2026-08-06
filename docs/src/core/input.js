@@ -119,10 +119,21 @@ class InputManager {
       return;
     }
     // Never hijack keys while the player is typing in a field.
-    const tag = document.activeElement?.tagName;
+    const el = document.activeElement;
+    const tag = el?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
-    if (SWALLOW.has(e.code) || this._isBound(e.code)) e.preventDefault();
+    // Enter and Space are how a focused button is pressed. Swallowing them
+    // here cancels the browser's own activation, which quietly makes every
+    // menu mouse-only for anyone navigating by keyboard — the buttons take
+    // focus, show a focus ring, and then do nothing when you press them.
+    const pressesFocused =
+      (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space')
+      && (tag === 'BUTTON' || tag === 'A' || el?.getAttribute?.('role') === 'button');
+
+    if (!pressesFocused && (SWALLOW.has(e.code) || this._isBound(e.code))) {
+      e.preventDefault();
+    }
     if (!e.repeat) {
       this.held.add(e.code);
       this.pressedEdge.add(e.code);
