@@ -181,6 +181,53 @@ class App {
     }
   }
 
+  /**
+   * Let a controller drive the menus.
+   *
+   * Two people on a sofa should never have to reach back to the keyboard to
+   * pick a fighter or start the next fight, so both pads share control of
+   * every screen outside the match. Character select does its own per-player
+   * polling — this covers the DOM screens, which are buttons.
+   */
+  _padMenu() {
+    const edge = input.takePadMenu();
+    if (!edge) return;
+
+    if (edge & IN.START) {
+      // Start/Options pauses a local match. Online has no pause.
+      if (this.screen === 'match' && this.mode !== 'online') {
+        this._setPaused(!this.paused);
+        return;
+      }
+    }
+    if (this.screen === 'select') return;          // reads the pads itself
+    if (this.screen === 'match' && !this.paused) return;
+
+    const open = document.querySelector('dialog[open]');
+    const scope = open || document.querySelector(`[data-screen="${this.screen}"]`);
+    if (!scope) return;
+
+    const btns = [...scope.querySelectorAll('button')]
+      .filter((b) => !b.disabled && b.offsetParent !== null);
+    if (!btns.length) return;
+
+    const here = btns.indexOf(document.activeElement);
+    const step = (n) => {
+      const next = here < 0 ? btns[0] : btns[(here + n + btns.length) % btns.length];
+      next.focus({ preventScroll: true });
+      audio.play('uiHover');
+    };
+
+    if (edge & (IN.DOWN | IN.RIGHT)) step(1);
+    else if (edge & (IN.UP | IN.LEFT)) step(-1);
+    else if (edge & (IN.LP | IN.LK)) (here < 0 ? btns[0] : btns[here]).click();
+    else if (edge & (IN.HK | IN.TAUNT)) {
+      // Right face / bumper backs out, the way console menus do.
+      if (open) open.close();
+      else if (this.screen !== 'home') this._quitToHome();
+    }
+  }
+
   /** `<dialog closedby>` isn't in Safari yet; add click-outside dismissal. */
   _installDialogFallback() {
     if ('closedBy' in HTMLDialogElement.prototype) return;
@@ -1106,6 +1153,8 @@ class App {
     const dtReal = Math.min(4, elapsed / TICK_MS);
     const dtFrames = Math.min(4, (elapsed / TICK_MS) * timeScale);
     this.dtReal = dtReal;
+
+    this._padMenu();
 
     if (this.screen === 'match' && this.match && !this.paused) {
       this.acc += elapsed * timeScale;

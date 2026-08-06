@@ -530,3 +530,28 @@
 .codebox::placeholder { color: var(--text-3); font-style: italic; }
 
 .direct__warn { color: var(--warn); text-align: center; }
+
+/* ── Controller list (Settings → Controls) ──────────────
+   One row per connected pad. The row lights up while that pad is being
+   pressed, which is the quickest way to answer "which one am I holding?"
+   without labelling hardware. */
+.padlist { display: grid; gap: 10px; }
+.padrow {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surf-0);
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  transition: border-color .12s ease, background .12s ease;
+}
+.padrow[data-slot="0"] { border-left-color: var(--p1, var(--accent)); }
+.padrow[data-slot="1"] { border-left-color: var(--p2, var(--accent-2, var(--accent))); }
+.padrow[data-slot="-1"] { border-left-color: var(--line); opacity: .62; }
+.padrow[data-active="yes"] { background: var(--surf-1); border-color: var(--accent); }
+.padrow b { font-size: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .padrow { transition: none; }
+}

@@ -8,7 +8,7 @@
    ══════════════════════════════════════════════════════════════ */
 
 import { settings, DEFAULTS } from '../core/settings.js';
-import { input, keyLabel } from '../core/input.js';
+import { input, keyLabel, padVendor, PAD_LABELS } from '../core/input.js';
 import { audio } from '../core/audio.js';
 import { ACTIONS } from '../sim/constants.js';
 import { defaultSignalUrl, isStaticHost } from '../net/signal.js';
@@ -22,6 +22,66 @@ function el(tag, cls, html) {
   if (cls) n.className = cls;
   if (html != null) n.innerHTML = html;
   return n;
+}
+
+/**
+ * Live controller list.
+ *
+ * Worth showing rather than assuming: the browser hands out controller
+ * indices that are sparse and never reused, so "the first one I plugged in"
+ * and "the one the game calls Player 1" can drift apart after a reconnect.
+ * Press a button and the row lights up, so there is never any doubt which
+ * controller is about to fight for whom.
+ */
+function padPanel() {
+  const wrap = el('div', 'padlist');
+  const rows = el('div');
+  const swap = el('button', 'btn btn--ghost btn--sm', 'Swap players');
+  swap.type = 'button';
+  swap.addEventListener('click', () => {
+    input.swapPads();
+    audio.play('uiConfirm');
+    draw();
+  });
+
+  function draw() {
+    const pads = input.syncPads();
+    rows.replaceChildren();
+    if (!pads.length) {
+      rows.appendChild(el('p', 'card__hint',
+        'No controller detected. Connect one and press a button — browsers hide '
+        + 'controllers until they are used.'));
+      swap.hidden = true;
+      return;
+    }
+    swap.hidden = pads.length < 2;
+    for (const pad of pads) {
+      const slot = input.padSlots.indexOf(pad.index);
+      const who = slot === 0 ? 'Player 1' : slot === 1 ? 'Player 2' : 'Not assigned';
+      const lab = PAD_LABELS[padVendor(pad.id)];
+      const row = el('div', 'padrow');
+      row.dataset.slot = slot;
+      row.dataset.active = input.padActivity(pad.index) ? 'yes' : 'no';
+      row.append(
+        el('b', null, who),
+        el('span', 'card__hint', `${pad.id.replace(/\s*\([^)]*\)\s*/g, ' ').trim().slice(0, 42)}`),
+        el('span', 'card__hint',
+           `Attacks ${lab[2]} ${lab[3]} ${lab[0]} ${lab[1]} · Super ${lab[5]} · Taunt ${lab[4]}`),
+      );
+      rows.appendChild(row);
+    }
+  }
+
+  draw();
+  // Cheap poll: the Gamepad API has no "button pressed" event, and this only
+  // runs while the settings dialog is on screen.
+  const timer = setInterval(() => {
+    if (!wrap.isConnected) { clearInterval(timer); return; }
+    draw();
+  }, 150);
+
+  wrap.append(rows, swap);
+  return wrap;
 }
 
 function group(title) {
@@ -240,11 +300,13 @@ export function buildSettings() {
       + 'Local Versus keeps the two sets separate, one per player.'));
     cg.appendChild(bindGrid(render));
     c.appendChild(cg);
-    const cg2 = group('Gamepads');
+    const cg2 = group('Controllers');
     cg2.appendChild(el('p', 'card__hint',
-      'Controllers are detected automatically: pad 1 drives Player 1, pad 2 drives '
-      + 'Player 2. Face buttons map to LP/HP/LK/HK, right bumper is Super, left bumper '
-      + 'is Taunt. Rumble fires on hits if your pad supports it.'));
+      'Plug in two controllers and pick Local Versus — one player each, no keyboard '
+      + 'needed. Controllers also drive the menus and the character select. Face '
+      + 'buttons are the four attacks, right bumper is Super, left bumper is Taunt, '
+      + 'Start pauses. Rumble fires on hits if your pad supports it.'));
+    cg2.appendChild(padPanel());
     c.appendChild(cg2);
     const lg = group('Keyboard layout');
     lg.append(
