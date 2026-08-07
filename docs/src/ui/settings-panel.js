@@ -14,6 +14,7 @@ import { ACTIONS } from '../sim/constants.js';
 import { defaultSignalUrl, isStaticHost } from '../net/signal.js';
 import { keyboardLayout } from '../core/keyboard.js';
 import { STAGES, STAGE_ORDER } from '../gfx/stage.js';
+import { updates } from '../core/updates.js';
 
 /* ── Control factories ────────────────────────────────── */
 
@@ -434,6 +435,7 @@ export function buildSettings() {
       el('p', 'card__hint', signalHint()),
     );
     m.appendChild(ng);
+    m.appendChild(offlinePanel());
   };
 
   /* — Tabs — */
@@ -466,6 +468,56 @@ export function buildSettings() {
 
   render();
   return { render };
+}
+
+/**
+ * Offline status.
+ *
+ * Worth showing rather than assuming. "It doesn't work offline" has exactly
+ * three causes — the worker never registered, it registered but the files did
+ * not finish downloading, or the browser is simply serving an older copy — and
+ * they are indistinguishable from the outside. This says which.
+ */
+function offlinePanel() {
+  const g = group('Offline play');
+  const line = el('p', 'card__hint', 'Checking…');
+  const btn = el('button', 'btn btn--ghost btn--sm', 'Check for updates now');
+  btn.type = 'button';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try { await updates.registration?.update(); } catch { /* offline */ }
+    setTimeout(() => { btn.disabled = false; draw(); }, 1200);
+  });
+
+  async function draw() {
+    if (!('serviceWorker' in navigator)) {
+      line.textContent = 'This browser cannot store the game for offline play.';
+      btn.hidden = true;
+      return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const keys = await caches.keys();
+      const key = keys.find((k) => k.startsWith('davos-'));
+      const n = key ? (await (await caches.open(key)).keys()).length : 0;
+      if (!reg || !reg.active) {
+        line.textContent = 'Not stored yet. Stay on this page for a few seconds '
+          + 'with a working connection, then reload once.';
+      } else if (n < 30) {
+        line.textContent = `Still downloading — ${n} of about 38 files stored.`;
+      } else {
+        line.textContent = `Ready to play offline: ${n} files stored, `
+          + `version ${(key || '').replace('davos-', '')}.`
+          + (navigator.serviceWorker.controller ? '' : ' Reload once to activate it.');
+      }
+    } catch {
+      line.textContent = 'Could not read the offline cache.';
+    }
+  }
+
+  draw();
+  g.append(line, btn);
+  return g;
 }
 
 function signalHint() {

@@ -23,6 +23,11 @@ const VERSION = '__VERSION__';
 const CACHE = `davos-${VERSION}`;
 const PRECACHE = __PRECACHE__;
 
+/* The handful of files without which there is no game at all. If these fail,
+   the install genuinely has to fail. Everything else is best-effort. */
+const SHELL = ['./', 'index.html', 'src/main.js',
+               'styles/tokens.css', 'styles/controls.css', 'styles/screens.css'];
+
 /* Requests that must always go to the network.
    The relay credentials at /ice expire within hours and are minted per
    request — a cached copy is worse than none, because it fails at ICE time
@@ -32,9 +37,27 @@ const ALWAYS_LIVE = /\/(ice|signal)(\/|$|\?)/;
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE);
-    // Bypass the HTTP cache while precaching, or a stale intermediary can
-    // seed the new version with the old files it was meant to replace.
-    await cache.addAll(PRECACHE.map((p) => new Request(p, { cache: 'reload' })));
+
+    /* cache.addAll() is all-or-nothing: one hiccup among nearly forty files
+       and the whole install fails, leaving no worker at all and no offline
+       play — with nothing on screen to say so. Fetch them individually and
+       tolerate stragglers instead, so a flaky connection costs one file
+       rather than the entire feature. `cache: 'reload'` bypasses the HTTP
+       cache, or a stale intermediary seeds the new version with the very
+       files it was meant to replace. */
+    const store = async (path) => {
+      const res = await fetch(new Request(path, { cache: 'reload' }));
+      if (!res || !res.ok) throw new Error(`${path} -> ${res && res.status}`);
+      await cache.put(path, res);
+    };
+
+    const results = await Promise.allSettled(PRECACHE.map(store));
+    const failed = PRECACHE.filter((_, i) => results[i].status === 'rejected');
+
+    // Only the shell is non-negotiable.
+    const fatal = failed.filter((p) => SHELL.includes(p));
+    if (fatal.length) throw new Error('shell missing: ' + fatal.join(', '));
+
     // Deliberately NOT skipWaiting(). The page decides when to switch.
   })());
 });

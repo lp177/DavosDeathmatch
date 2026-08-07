@@ -1406,17 +1406,15 @@ async function boot() {
   audio.music?.start({ bpm: 128, root: 55 });
   audio.music?.setIntensity(0.45);
 
-  // Cache the game for offline play, and watch for new builds. Deliberately
-  // after the first frame: registration must never delay the game appearing.
-  installUpdates().then(() => {
-    updates.onAvailable = () => {
-      // Hold it back until the fight is over. Offering a reload mid-round is
-      // an invitation to end an online match by accident.
-      const show = () => { document.getElementById('update').hidden = false; };
-      if (app.screen === 'match') app._pendingUpdate = show;
-      else show();
-    };
-  });
+  // The worker is registered at page load (below); from here we only need to
+  // know when it has a new build for us.
+  updates.onAvailable = () => {
+    // Hold it back until the fight is over. Offering a reload mid-round is an
+    // invitation to end an online match by accident.
+    const show = () => { document.getElementById('update').hidden = false; };
+    if (app.screen === 'match') app._pendingUpdate = show;
+    else show();
+  };
 
   // Arrived on an invite link? Go straight to it. Read it again rather than
   // trusting the value from page load — a newer link may have arrived while
@@ -1475,6 +1473,13 @@ if (pendingInvite) {
 
 bootBtn.addEventListener('click', boot, { once: true });
 bootBtn.focus();
+
+/* Cache the game as soon as the page loads, not when the player presses the
+   boot button. Someone who opens the page, reads the title screen and comes
+   back later on a train would otherwise have nothing cached: the worker was
+   only ever registered from inside boot(). Registration is fire-and-forget and
+   never blocks the game appearing. */
+installUpdates();
 
 /* A second invite arriving in a tab that is already open.
  *

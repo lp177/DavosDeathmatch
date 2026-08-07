@@ -44,6 +44,10 @@ for (const rel of files) {
   hash.update(rel);
   hash.update(fs.readFileSync(path.join(ROOT, rel)));
 }
+// The worker's own logic is part of the app: changing how caching behaves has
+// to produce a new version, or the fix ships under the old cache name and the
+// activate sweep never clears what it replaced.
+hash.update(fs.readFileSync(TEMPLATE));
 const version = hash.digest('hex').slice(0, 12);
 
 // './' is the navigation entry; index.html is also listed so a direct link to
