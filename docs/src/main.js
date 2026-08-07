@@ -22,6 +22,7 @@ import { input } from './core/input.js';
 import { audio } from './core/audio.js';
 import { seedFromString } from './core/rng.js';
 import { keyboardLayout } from './core/keyboard.js';
+import { installUpdates, updates, applyUpdate } from './core/updates.js';
 
 import { Camera } from './fx/camera.js';
 import { Particles } from './fx/particles.js';
@@ -163,6 +164,8 @@ class App {
       case 'invite-retry':  this._retryInvite(); break;
       case 'invite-abandon': this._abandonInvite(); break;
       case 'close-room':    this._lobbyRestart(); break;
+      case 'apply-update':  applyUpdate(); break;
+      case 'dismiss-update': document.getElementById('update').hidden = true; break;
       case 'direct-reply':  this._directReply(); break;
       case 'direct-accept': this._directAccept(); break;
       case 'copy-offer':      this._copyBox('direct-offer', btn); break;
@@ -408,6 +411,8 @@ class App {
   }
 
   _quitToHome() {
+    // A build that landed mid-match has been waiting for this moment.
+    if (this._pendingUpdate) { const f = this._pendingUpdate; this._pendingUpdate = null; setTimeout(f, 400); }
     this._teardownNet();
     this.invite = null;   // leaving the lobby ends the invitation too
     this.match = null;
@@ -1400,6 +1405,18 @@ async function boot() {
   app.show('home');
   audio.music?.start({ bpm: 128, root: 55 });
   audio.music?.setIntensity(0.45);
+
+  // Cache the game for offline play, and watch for new builds. Deliberately
+  // after the first frame: registration must never delay the game appearing.
+  installUpdates().then(() => {
+    updates.onAvailable = () => {
+      // Hold it back until the fight is over. Offering a reload mid-round is
+      // an invitation to end an online match by accident.
+      const show = () => { document.getElementById('update').hidden = false; };
+      if (app.screen === 'match') app._pendingUpdate = show;
+      else show();
+    };
+  });
 
   // Arrived on an invite link? Go straight to it. Read it again rather than
   // trusting the value from page load — a newer link may have arrived while

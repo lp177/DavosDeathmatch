@@ -555,3 +555,34 @@
 @media (prefers-reduced-motion: reduce) {
   .padrow { transition: none; }
 }
+
+/* ── New version available ──────────────────────────────
+   Deliberately a banner and not a dialog: a build landing mid-match must
+   never steal the input or interrupt the round. The swap only happens when
+   the player asks for it. */
+.update {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--r-md);
+  background: var(--surf-1);
+  border: 1px solid var(--accent);
+  box-shadow: 0 10px 30px rgb(0 0 0 / .45);
+  animation: update-in .25s ease-out;
+}
+.update[hidden] { display: none; }
+.update__text { font-size: 14px; }
+
+@keyframes update-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update { animation: none; }
+}

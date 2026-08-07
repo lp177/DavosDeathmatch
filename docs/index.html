@@ -7,6 +7,8 @@
 <title>Davos Deathmatch</title>
 <meta name="description" content="A satirical fighting game set at the World Economic Forum.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🥊</text></svg>">
+<meta name="theme-color" content="#0f1216">
+<link rel="manifest" href="app.webmanifest">
 <link rel="stylesheet" href="styles/tokens.css">
 <link rel="stylesheet" href="styles/controls.css">
 <link rel="stylesheet" href="styles/screens.css">
@@ -340,6 +342,14 @@
       <button class="btn btn--ghost" data-action="quit">Quit to Menu</button>
     </div>
   </section>
+</div>
+
+<!-- ═══ New version available ═══ -->
+<div class="update" id="update" hidden role="status" aria-live="polite">
+  <span class="update__text">A new version of the game is ready.</span>
+  <button class="btn btn--primary btn--sm" data-action="apply-update">Reload now</button>
+  <button class="btn btn--ghost btn--sm" data-action="dismiss-update"
+          aria-label="Keep playing this version">Later</button>
 </div>
 
 <!-- ═══ Settings dialog ═══ -->

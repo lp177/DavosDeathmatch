@@ -1,0 +1,20 @@
+{
+  "name": "Davos Deathmatch",
+  "short_name": "Davos",
+  "description": "A satirical fighting game set at the World Economic Forum.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0f1216",
+  "theme_color": "#0f1216",
+  "categories": ["games"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
